@@ -1,0 +1,132 @@
+<?xml version="1.0" ?>
+
+<robot name="rope.urdf" >
+  <link name="00base_link">
+  	<inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.5"/>
+       <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size = "0.5 0.5 0.5"/>
+      </geometry>
+      <material name="brown">
+        <color rgba="0.61176471 0.45882353 0.37254902 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size = "0.5 0.5 0.5"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rope_joint0" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 .15"/>
+    <parent link="00base_link"/>
+    <child link="01rope_link"/>
+    <limit effort="0.001" velocity="1.0"/>
+    <safety_controller k_velocity="10" k_position="15"/>
+  </joint>
+  <link name="01rope_link">
+  	<inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.5"/>
+       <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder radius = "0.01" length = "0.15"/>
+      </geometry>
+      <material name="brown">
+        <color rgba="0.61176471 0.45882353 0.37254902 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius = "0.01" length = "0.15"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- <link name="rope_link2">
+  	<inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.5"/>
+       <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder radius = "0.01" length = "0.15"/>
+      </geometry>
+      <material name="brown">
+        <color rgba="0.61176471 0.45882353 0.37254902 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius = "0.015" length = "0.15"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rope_joint1" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 .15"/>
+    <parent link="rope_link1"/>
+    <child link="rope_link2"/>
+    <limit effort="0.001" velocity="1.0"/>
+    <safety_controller k_velocity="10" k_position="15"/>
+  </joint>
+  <link name="rope_link3">
+  	<inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.5"/>
+       <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder radius = "0.01" length = "0.15"/>
+      </geometry>
+      <material name="brown">
+        <color rgba="0.61176471 0.45882353 0.37254902 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius = "0.01" length = "0.15"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rope_joint2" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 .15"/>
+    <parent link="rope_link2"/>
+    <child link="rope_link3"/>
+    <limit effort="0.001" velocity="1.0"/>
+    <safety_controller k_velocity="10" k_position="15"/>
+  </joint>
+  <link name="rope_link4">
+  	<inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.5"/>
+       <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder radius = "0.01" length = "0.15"/>
+      </geometry>
+      <material name="brown">
+        <color rgba="0.61176471 0.45882353 0.37254902 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius = "0.01" length = "0.15"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rope_joint3" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 .15"/>
+    <parent link="rope_link3"/>
+    <child link="rope_link4"/>
+    <limit effort="0.001" velocity="1.0"/>
+    <safety_controller k_velocity="10" k_position="15"/>
+  </joint> -->
+</robot>
