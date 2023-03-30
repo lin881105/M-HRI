@@ -24,11 +24,16 @@ def mat2gymapi_transform(mat):
 
     transform.p = gymapi.Vec3(p[0],p[1],p[2])
     
-    quat = R.from_matrix(mat[:3,:3])
+    quat = R.from_matrix(mat[:3,:3]).as_quat()
+    transform.r.x = quat[0]
+    transform.r.y = quat[1]
+    transform.r.z = quat[2]
+    transform.r.w = quat[3]
 
-    euler = quat.as_euler("xyz",degrees=False)
 
-    transform.r = gymapi.Quat.from_euler_zyx(euler[0],euler[1],euler[2])
+    # euler = quat.as_euler("xyz",degrees=False)
+
+    # transform.r = gymapi.Quat.from_euler_zyx(euler[0],euler[1],euler[2])
     # print(euler)
 
     return transform
@@ -51,9 +56,28 @@ def tensor_6d_pose2mat(pos,quat):
     mat[:3,3] = pos
     mat[:3,:3] = rot
 
+    print(mat)
+
     return mat
     
-
+def mat2posrot(mat):
+    # print(mat.shape)
+    
+    pos = mat[:,:3,3]
+    rot_mat = mat[:,:3,:3]
+    # print(rot_mat.shape)
+    
+    rot = R.from_matrix(rot_mat)
+    
+    quat = rot.as_quat()
+    
+    # print(pos)
+    # print(quat)
+    
+    pose = np.hstack([pos.reshape(-1, 3), quat.reshape(-1, 4)])
+    
+    return pose
+    
 
 
 
