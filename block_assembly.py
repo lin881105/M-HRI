@@ -83,7 +83,7 @@ def control_osc(dpose):
 
 
 # set random seed
-np.random.seed(20)
+# np.random.seed(20)
 
 torch.set_printoptions(precision=4, sci_mode=False)
 
@@ -157,15 +157,10 @@ else:
 asset_root = "assets"
 
 # create table asset
-table_dims = gymapi.Vec3(0.6, 1.0, 0.4)
+table_dims = gymapi.Vec3(0.3, 0.5, 0.4)
 asset_options = gymapi.AssetOptions()
 asset_options.fix_base_link = True
 table_asset = gym.create_box(sim, table_dims.x, table_dims.y, table_dims.z, asset_options)
-
-sphere_asset = gym.create_sphere(sim, 0.01, asset_options)
-initial_pose = gymapi.Transform()
-initial_pose.p = gymapi.Vec3(0,0,0)
-initial_pose.r = gymapi.Quat(0, 0, 0, 1)
 
 # create target region
 region_dims = gymapi.Vec3(0.1,0.1,0.0001)
@@ -176,6 +171,7 @@ region_asset = gym.create_box(sim, region_dims.x,region_dims.y, region_dims.z, a
 # load block asset
 block_asset_list = []
 asset_options = gymapi.AssetOptions()
+asset_options.armature = 0.01
 # asset_options.fix_base_link = True
 block_type = ['A.urdf', 'B.urdf', 'C.urdf', 'D.urdf', 'E.urdf']
 for t in block_type:
@@ -240,11 +236,11 @@ franka_pose = gymapi.Transform()
 franka_pose.p = gymapi.Vec3(0, 0, 0)
 
 table_pose = gymapi.Transform()
-table_pose.p = gymapi.Vec3(0.5, 0.0, 0.5 * table_dims.z)
+table_pose.p = gymapi.Vec3(0.45, 0.0, 0.5 * table_dims.z)
 
 region_pose = gymapi.Transform()
 
-mat_file = "goal/block_assembly/_goal_A_data.mat"
+mat_file = "goal/block_assembly/goal_A_data.mat"
 mat_dict = sio.loadmat(mat_file)
 
 goal_list = mat_dict["block_list"][0]
@@ -272,11 +268,9 @@ for i in range(num_envs):
     # add table
     table_handle = gym.create_actor(env, table_asset, table_pose, "table", i,0)
 
-    ball_handle = gym.create_actor(env, sphere_asset, initial_pose, "ball", i)
-
     # add region
-    region_pose.p.x = table_pose.p.x + np.random.uniform(-0.2, 0.1)
-    region_pose.p.y = table_pose.p.y + np.random.uniform(-0.3, 0.3)
+    region_pose.p.x = table_pose.p.x + np.random.uniform(-0.1, 0.1)
+    region_pose.p.y = table_pose.p.y + np.random.uniform(-0.1, 0.1)
     region_pose.p.z = table_dims.z #+ 0.001
     region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
     
@@ -294,8 +288,8 @@ for i in range(num_envs):
     for j, idx in enumerate(goal_list):
 
         block_pose = gymapi.Transform()
-        block_pose.p.x = table_pose.p.x + np.random.uniform(-0.2, 0.1)
-        block_pose.p.y = table_pose.p.y + np.random.uniform(-0.3, 0.3)
+        block_pose.p.x = table_pose.p.x + np.random.uniform(-0.13, 0.13)
+        block_pose.p.y = table_pose.p.y + np.random.uniform(-0.25, 0.25)
         block_pose.p.z = table_dims.z + 0.03
 
         r1 = R.from_euler('z', np.random.uniform(-math.pi, math.pi))
@@ -319,8 +313,6 @@ for i in range(num_envs):
         block_idxs.append(block_idx)
 
     block_idxs_list.append(block_idxs)
-
-    ball_idx = gym.get_actor_rigid_body_index(env, ball_handle, 0, gymapi.DOMAIN_SIM)
 
     # # get global index of box in rigid body state tensor
     # box_idx = gym.get_actor_rigid_body_index(env, box_handle, 0, gymapi.DOMAIN_SIM)
@@ -361,6 +353,7 @@ for i in range(goal_list.shape[0]):
                                             body_states["pose"]["r"]["y"],
                                             body_states["pose"]["r"]["z"],
                                             body_states["pose"]["r"]["w"]]).reshape(-1)).as_matrix()
+    
     tmp_mat[:3, 3] = np.array([body_states["pose"]["p"]["x"], body_states["pose"]["p"]["y"], body_states["pose"]["p"]["z"]]).reshape(-1)
 
     place_mat = utils.gymapi_transform2mat(region_pose) @ rel_place_pos[i]
@@ -368,6 +361,33 @@ for i in range(goal_list.shape[0]):
 
     pick_pose.append(pick_mat)
     place_pose.append(place_mat)
+
+goal_pick_pos_list = []
+goal_pick_rot_list = []
+goal_prepick_pos_list = []
+goal_place_pos_list = []
+goal_place_rot_list = []
+goal_preplace_pos_list = []
+for i in range(len(goal_list)):
+    goal_pick_pose = utils.mat2gymapi_transform(pick_pose[i])
+    goal_place_pose = utils.mat2gymapi_transform(place_pose[i])
+
+
+    goal_prepick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,0.7)).reshape(1, 3).to(device)
+    goal_pick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,goal_pick_pose.p.z)).reshape(1, 3).to(device)
+    goal_pick_rot = torch.Tensor((goal_pick_pose.r.x,goal_pick_pose.r.y,goal_pick_pose.r.z,goal_pick_pose.r.w)).reshape(1, 4).to(device)
+
+    goal_preplace_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,0.7)).reshape(1, 3).to(device)
+    goal_place_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,goal_place_pose.p.z)).reshape(1, 3).to(device)
+    goal_place_rot = torch.Tensor((goal_place_pose.r.x,goal_place_pose.r.y,goal_place_pose.r.z,goal_place_pose.r.w)).reshape(1, 4).to(device)
+
+    goal_pick_pos_list.append(goal_pick_pos)
+    goal_pick_rot_list.append(goal_pick_rot)
+    goal_prepick_pos_list.append(goal_prepick_pos)
+    goal_place_pos_list.append(goal_place_pos)
+    goal_place_rot_list.append(goal_place_rot)
+    goal_preplace_pos_list.append(goal_preplace_pos)
+
 
 # gym.set_actor_rigid_body_states(env, ball_handle, body_states, gymapi.STATE_ALL)
 
@@ -432,24 +452,13 @@ hand_restart = torch.full([num_envs], False, dtype=torch.bool).to(device)
 pos_action = torch.zeros_like(dof_pos).squeeze(-1)
 effort_action = torch.zeros_like(pos_action)
 
-step = 0
-max_step = len(goal_list)
+
 
 # goal_pose = torch.Tensor(utils.mat2posrot(np.array(goal_pose))).to(device)
 # rel_pick_pos = torch.Tensor(utils.mat2posrot(rel_pick_pos)).to(device)
 # rel_place_pos = torch.Tensor(utils.mat2posrot(rel_place_pos)).to(device)
 
-goal_pick_pose = utils.mat2gymapi_transform(pick_pose[0])
-goal_place_pose = utils.mat2gymapi_transform(place_pose[0])
 
-
-goal_prepick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,0.2)).reshape(1, 3).to(device)
-goal_pick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,goal_pick_pose.p.z)).reshape(1, 3).to(device)
-goal_pick_rot = torch.Tensor((goal_pick_pose.r.x,goal_pick_pose.r.y,goal_pick_pose.r.z,goal_pick_pose.r.w)).reshape(1, 4).to(device)
-
-goal_preplace_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,0.2)).reshape(1, 3).to(device)
-goal_place_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,goal_place_pose.p.z)).reshape(1, 3).to(device)
-goal_place_rot = torch.Tensor((goal_place_pose.r.x,goal_place_pose.r.y,goal_place_pose.r.z,goal_place_pose.r.w)).reshape(1, 4).to(device)
 
 camera_properties = gymapi.CameraProperties()
 camera_properties.width = 640
@@ -465,17 +474,18 @@ gym.set_camera_location(camera_handle, envs[0], camera_position, camera_target)
 
 img = []
 frame_count=0
-
+step = 0
 to_prepick = False
 to_pick = False
 to_preplace = False
 to_place = False
 picked = False
 placed = False
-
+max_step = len(goal_list)
 op = True
 
-grasp_counter = 0
+pick_counter = 0
+place_counter = 0
 
 
 # simulation loop
@@ -504,63 +514,79 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
     gripper_open = torch.Tensor(franka_upper_limits[7:]).to(device)
     gripper_close = torch.Tensor(franka_lower_limits[7:]).to(device)
 
-    # if step < max_step:
 
-    #     pass
-    
-    
-    if torch.norm(goal_prepick_pos - hand_pos) < 0.01 and torch.norm(orientation_error(goal_pick_rot,hand_rot))< 0.01:
-        to_prepick = True
+    if step < max_step:
+
+        # print(step)
         
-    if to_prepick:
-        goal_pos = goal_pick_pos
-        goal_rot = goal_pick_rot
-    else:
-        goal_pos = goal_prepick_pos
-        goal_rot = goal_place_rot
-
-
-    if to_prepick and torch.norm(goal_pick_pos - hand_pos) < 0.01 and torch.norm(orientation_error(goal_pick_rot,hand_rot))< 0.01:
-        to_pick = True
-
-    
-    if to_pick:
-        pos_action[:,7:9] = gripper_close
-        grasp_counter += 1
+        if torch.norm(goal_prepick_pos_list[step] - hand_pos) < 0.001 and torch.norm(orientation_error(goal_pick_rot_list[step],hand_rot))< 0.1:
+            to_prepick = True
+        else:
+            goal_pos = goal_prepick_pos_list[step]
+            goal_rot = goal_pick_rot_list[step]
         
-        if grasp_counter >= 20:
-            picked = True
-    else:
-        goal_pos = goal_pick_pos
-        goal_rot = goal_pick_rot
-    
-    if picked:
-        goal_pos = goal_preplace_pos
-        goal_rot = goal_place_rot
+            
+        if to_prepick:
+            goal_pos = goal_pick_pos_list[step]
+            goal_rot = goal_pick_rot_list[step]
+
         
-    if torch.norm(goal_preplace_pos - hand_pos) < 0.01 and torch.norm(orientation_error(goal_place_rot, hand_rot)) < 0.01:
-        to_preplace = True
+
+        if torch.norm(goal_pick_pos_list[step] - hand_pos) < 0.001 and torch.norm(orientation_error(goal_pick_rot_list[step],hand_rot))< 0.1:
+            to_pick = True
+
         
-    if to_preplace:
-        goal_pos = goal_place_pos
-        goal_rot = goal_place_rot
-    else:
-        goal_pos = goal_preplace_pos
-        goal_rot = goal_place_rot
+        if to_pick:
+            pos_action[:,7:9] = gripper_close
+            pick_counter += 1
+            
+            if pick_counter >= 20:
+                picked = True
+        
+        if picked:
+            goal_pos = goal_preplace_pos_list[step]
+            goal_rot = goal_place_rot_list[step]
 
-    # print(torch.norm(goal_place_pos - hand_pos), torch.norm(orientation_error(goal_place_rot,hand_rot)))
-    if to_preplace and torch.norm(goal_place_pos - hand_pos) < 0.01 and torch.norm(orientation_error(goal_place_rot, hand_rot)) < 0.01:
-        to_place = True
 
-    if to_place:
-        pos_action[:,7:9] = gripper_open
-        if grasp_counter >= 20:
-            placed = True
+        # print("pos: ",torch.norm(goal_preplace_pos - hand_pos))
+        # print("rot: ", torch.norm(orientation_error(goal_place_rot, hand_rot)))
+            
+        if torch.norm(goal_preplace_pos_list[step] - hand_pos) < 0.005 and torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)) < 0.1:
+            to_preplace = True
+            
+        if to_preplace:
+            goal_pos = goal_place_pos_list[step]
+            goal_rot = goal_place_rot_list[step]
+            print(torch.norm(goal_place_pos_list[step] - hand_pos))
+            print(torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)))
+        # print(torch.norm(goal_place_pos - hand_pos), torch.norm(orientation_error(goal_place_rot,hand_rot)))
+        if torch.norm(goal_place_pos_list[step] - hand_pos) < 0.005 and torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)) < 0.1:
+            to_place = True
+
+        if to_place:
+            pos_action[:,7:9] = gripper_open
+            place_counter+=1
+            if place_counter >= 30:
+                placed = True
+        if placed:
+            print("placed")
+            pos_action[:,7:9] = gripper_open
+            goal_pos = init_pos
+            goal_rot = init_rot
+            pick_counter = 0
+            place_counter = 0
+            step+=1
+            to_prepick = False
+            to_pick = False
+            to_preplace = False
+            to_place = False
+            picked = False
+            placed = False
     
 
     
 
-    # compute position and orientation error
+        # compute position and orientation error
     if op:
         pos_action[:,7:9] = gripper_open
         op = False
@@ -582,9 +608,12 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
     gym.set_dof_position_target_tensor(sim, gymtorch.unwrap_tensor(pos_action))
     # gym.set_dof_actuation_force_tensor(sim, gymtorch.unwrap_tensor(effort_action))
 
-    rgb_filename = "output/frame%d.png" % (frame_count)
+    rgb_filename = "output/RGB/%3d.png" % (frame_count)
+    depth_filename = "output/DEPTH/%3d.png" % (frame_count)
+
     frame_count += 1
     gym.write_camera_image_to_file(sim, envs[0], camera_handle, gymapi.IMAGE_COLOR, rgb_filename)
+    gym.write_camera_image_to_file(sim, envs[0], camera_handle, gymapi.IMAGE_DEPTH, depth_filename)
 
     # update viewer
     gym.step_graphics(sim)

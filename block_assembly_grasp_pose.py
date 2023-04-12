@@ -184,7 +184,7 @@ region_asset = gym.create_box(sim, region_dims.x,region_dims.y, region_dims.z, a
 # create block assets
 block_asset_list = []
 asset_options = gymapi.AssetOptions()
-# asset_options.fix_base_link = True
+asset_options.fix_base_link = True
 block_type = ['A.urdf', 'B.urdf', 'C.urdf', 'D.urdf', 'E.urdf']
 for t in block_type:
     block_asset_list.append(gym.load_asset(sim, asset_root, 'urdf/block_assembly/block_' + t, asset_options))
@@ -470,8 +470,8 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
             if action == "save":
                 dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
                 print(hand_pos,hand_rot) 
-                grasp_pose.append(hand_pos)
-                grasp_rot.append(hand_rot)
+                # grasp_pose.append(hand_pos)
+                # grasp_rot.append(hand_rot)
 
         else :
             action = ''
@@ -537,19 +537,14 @@ gym.destroy_sim(sim)
 rel_place_pos = []
 rel_pick_pos = []
 
-"""
-tensor([[0.4119, 0.2724, 0.5762]], device='cuda:0') tensor([[ 0.9994, -0.0153, -0.0325,  0.0020]], device='cuda:0')
-tensor([[0.3918, 0.2770, 0.5477]], device='cuda:0') tensor([[ 0.9988, -0.0151, -0.0469,  0.0066]], device='cuda:0')
-tensor([[0.4483, 0.2689, 0.5538]], device='cuda:0') tensor([[ 0.9983, -0.0144, -0.0563,  0.0093]], device='cuda:0')
-"""
+grasp_pose.append(torch.tensor([[0.3955, 0.2798, 0.5748]], device='cuda:0') )
+grasp_rot.append(torch.tensor([[0.9976, 0.0232, 0.0471, 0.0452]], device='cuda:0'))
+grasp_pose.append(torch.tensor([[0.4242, 0.2802, 0.5518]], device='cuda:0') )
+grasp_rot.append(torch.tensor([[ 0.9961, -0.0196,  0.0617,  0.0596]], device='cuda:0'))
+grasp_pose.append(torch.tensor([[0.3711, 0.2842, 0.5412]], device='cuda:0'))
+grasp_rot.append(torch.tensor([[ 0.9964, -0.0241,  0.0627,  0.0516]], device='cuda:0'))
 
 
-# grasp_pose.append(torch.tensor([[0.4119, 0.2724, 0.5762]], device='cuda:0')) 
-# grasp_rot.append(torch.tensor([[ 0.9994, -0.0153, -0.0325,  0.0020]], device='cuda:0'))
-# grasp_pose.append(torch.tensor([[0.3918, 0.2770, 0.5477]], device='cuda:0')) 
-# grasp_rot.append(torch.tensor([[ 0.9988, -0.0151, -0.0469,  0.0066]], device='cuda:0'))
-# grasp_pose.append(torch.tensor([[0.4483, 0.2689, 0.5538]], device='cuda:0')) 
-# grasp_rot.append(torch.tensor([[ 0.9983, -0.0144, -0.0563,  0.0093]], device='cuda:0'))
 
 
 
