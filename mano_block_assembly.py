@@ -12,30 +12,8 @@ import time
 import scipy.io as sio
 from utils import utils
 from scipy.spatial.transform import Rotation as R
-from tqdm import trange
+import pytorch3d
 
-# regionx = np.random.uniform(-0.085, 0.085)
-# regiony = np.random.uniform(-0.085, 0.085)
-
-# flag = True
-# while True:
-#     rand_x = np.random.uniform(-0.13,0.13, 3)
-#     rand_y = np.random.uniform(-0.23,0.23, 3)
-#     print(rand_x, rand_y)
-#     for i in range(rand_x.shape[0]):
-#         if (np.linalg.norm(np.array((regionx,regiony)) - np.array(rand_x[i],rand_y[i])) < 0.05):
-#             flag = False
-#             break
-#             # randxy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (3, 2))
-#         else:
-#             for j in range(i+1, rand_x.shape[0]):
-#                 if (np.linalg.norm(np.array(rand_x[i],rand_y[i]) - np.array(rand_x[j],rand_y[j])) < 0.02):
-#                     flag = False
-#                     break
-#     if not flag:
-#         continue
-#     else:
-#         break    
 
 def check_in_region(region_xy, rand_xy):
     for i in range(rand_xy.shape[0]):
@@ -70,7 +48,7 @@ class BlockAssembly():
         self.gym = gymapi.acquire_gym()
 
         # create simulator
-        self.num_envs = 1
+        self.num_envs = 10
         self.env_spacing = 1.5
         self.max_episode_length = 195
 
@@ -95,9 +73,9 @@ class BlockAssembly():
         # parse arguments
         args = gymutil.parse_arguments(description="Joint control Methods Example")
 
-        args.use_gpu = False
-        args.use_gpu_pipeline = False
-        self.device = 'cpu' if torch.cuda.is_available() else 'cpu'
+        args.use_gpu = True
+        args.use_gpu_pipeline = True
+        self.device = args.sim_device if args.use_gpu_pipeline else 'cpu'
 
         # configure sim
         sim_params = gymapi.SimParams()
@@ -105,6 +83,7 @@ class BlockAssembly():
         sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
         sim_params.dt = 1.0 / 60.0
         sim_params.substeps = 2
+        # sim_params.use_gpu_pipeline = args.use_gpu_pipeline
 
         sim_params.physx.solver_type = 1
         sim_params.physx.num_position_iterations = 4
@@ -113,8 +92,6 @@ class BlockAssembly():
         sim_params.physx.rest_offset = 0.0
         sim_params.physx.bounce_threshold_velocity = 0.2
         sim_params.physx.max_depenetration_velocity = 1
-
-        sim_params.use_gpu_pipeline = args.use_gpu_pipeline
         sim_params.physx.num_threads = args.num_threads
         sim_params.physx.use_gpu = args.use_gpu
 
@@ -212,6 +189,10 @@ class BlockAssembly():
         self.block_masses = [[] for _ in range(self.num_envs)]
         self.envs = []
 
+        self.block_place_pos_list = []
+        self.block_preplace_pos_list = []
+        self.block_place_rot_list = []
+
         # create and populate the environments
         for i in range(num_envs):
             # create env
@@ -255,8 +236,22 @@ class BlockAssembly():
 
                 color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
                 self.gym.set_rigid_body_color(env_ptr, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
-                block_idx = self.gym.get_actor_rigid_body_index(env_ptr, block_handle, 0, gymapi.DOMAIN_SIM)
+                block_idx = self.gym.get_actor_index(env_ptr, block_handle, gymapi.DOMAIN_SIM)
                 self.block_indices[i].append(block_idx)
+
+            # save block goal pose
+            goal_preplace_pos = []
+            goal_place_pos = []
+            goal_place_rot = []
+            for j in range(len(self.goal_list)):
+                tmp_pose = utils.mat2gymapi_transform(utils.gymapi_transform2mat(region_pose) @ self.goal_pose[j])
+                goal_place_pos.append(torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,tmp_pose.p.z)).to(self.device))
+                goal_place_rot.append(torch.Tensor((tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device))
+                goal_preplace_pos.append(torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,0.7)).to(self.device))
+            
+            self.block_place_pos_list.append(goal_place_pos)
+            self.block_preplace_pos_list.append(goal_place_pos)
+            self.block_place_rot_list.append(goal_place_rot)
             
             # create mano and set properties
             mano_handle = self.gym.create_actor(env_ptr, mano_asset, handobj_start_pose, "mano", i, 2 ** (len(self.goal_list)), len(self.goal_list) + 2) # 100
@@ -266,7 +261,7 @@ class BlockAssembly():
             self.gym.set_actor_dof_properties(env_ptr, mano_handle, mano_dof_props)
 
         self.mano_indices = to_torch(self.mano_indices, dtype=torch.long, device=self.device)
-        self.block_indices = to_torch(self.block_indices, dtype=torch.long, device=self.device)
+        self.block_indices = to_torch(self.block_indices, dtype=torch.long, device=self.device) 
 
     def reset_idx(self):
         # reset hand root pose
@@ -298,10 +293,75 @@ class BlockAssembly():
         #                                              gymtorch.unwrap_tensor(init_object_indices), len(init_object_indices))
         pass
 
+    def get_hand_rel_mat(self):
+        obj_init = np.array([-0.19434147, -0.11968146, 0.01548913, -0.50471319, 0.49524648, -0.4952225 , 0.50472785])
+        obj_init_mat = np.eye(4)
+        obj_init_mat[:3, :3] = R.from_quat(obj_init[3:7]).as_matrix()
+        obj_init_mat[:3, 3] = obj_init[0:3]
+
+        hand_goal_pose = np.array([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
+        1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
+        4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
+       -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
+       -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
+        8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
+       -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
+       -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
+        3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
+       -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
+        8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
+        1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
+        6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=np.float32)
+        hand_goal_mat = np.eye(4)
+        hand_goal_mat[:3, :3] = R.from_euler("XYZ", hand_goal_pose[3:6]).as_matrix()
+        hand_goal_mat[:3, 3] = hand_goal_pose[0:3]
+        return torch.tensor(np.linalg.inv(obj_init_mat) @ hand_goal_mat, dtype=torch.float32)
+
+    
+    def move(self,step):
+
+        goal_pose = self.goal_list[step]
+        init_pose = self.root_state_tensor[self.block_indices[:,step],:7]
+
+        step_size = (goal_pose-init_pose)*0.001
+
+        self.root_state_tensor[self.block_indices[:,step], :7] += step_size
+        goal_obj_indices = torch.tensor([self.block_indices[:,step]]).to(torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(
+            self.sim,
+            gymtorch.unwrap_tensor(self.root_state_tensor),
+            gymtorch.unwrap_tensor(goal_obj_indices),
+            len(goal_obj_indices)
+        )
+
+        # set hand pose
+        cur_obj_mat = torch.eye(4)
+        cur_obj_mat[:3, 3] = self.root_state_tensor[self.block_indices[:,step], 0:3]
+        cur_obj_mat[:3, :3] = pytorch3d.transforms.quaternion_to_matrix(self.root_state_tensor[self.block_indices[:,step], 3:7][[3, 0, 1, 2]])
+
+        new_wrist_mat = cur_obj_mat @ self.get_hand_rel_mat()
+        self.dof_state[0:3, 0] = new_wrist_mat[:3, 3]
+        self.dof_state[3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:3, :3], "XYZ")
+        dof_indices = torch.tensor([self.mano_indices]).to(dtype=torch.int32)
+        self.gym.set_dof_state_tensor_indexed(self.sim,
+                                        gymtorch.unwrap_tensor(self.dof_state),
+                                        gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        target = self.dof_state[:, 0].clone()
+        self.gym.set_dof_position_target_tensor_indexed(self.sim,
+                                                gymtorch.unwrap_tensor(target),
+                                                gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        
+
+
+
+        
+
     def simulate(self):
         torch.set_printoptions(sci_mode=False)
 
         self.reset_idx()
+
+        step = 0
 
         cnt = 0
         while not self.gym.query_viewer_has_closed(self.viewer):            
@@ -314,6 +374,14 @@ class BlockAssembly():
             self.gym.refresh_actor_root_state_tensor(self.sim)
             self.gym.refresh_dof_state_tensor(self.sim)
 
+            # print(self.root_state_tensor[self.block_indices[:,0], :7].shape)
+            # print(self.block_indices)
+            if step > 3:
+                break 
+            self.move(step)
+            step+=1
+
+            
 
 
             # print('-' * 10)

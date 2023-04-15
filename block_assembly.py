@@ -27,6 +27,7 @@ import scipy.io as sio
 from utils import utils
 from scipy.spatial.transform import Rotation as R
 # import pytorch3d.transforms
+from tqdm import trange
 
 def check_in_region(region_xy, rand_xy):
     for i in range(rand_xy.shape[0]):
@@ -184,7 +185,7 @@ else:
 asset_root = "assets"
 
 # create table asset
-table_dims = gymapi.Vec3(0.3, 0.5, 0.4)
+table_dims = gymapi.Vec3(0.4, 0.6, 0.4)
 asset_options = gymapi.AssetOptions()
 asset_options.fix_base_link = True
 table_asset = gym.create_box(sim, table_dims.x, table_dims.y, table_dims.z, asset_options)
@@ -198,7 +199,6 @@ region_asset = gym.create_box(sim, region_dims.x,region_dims.y, region_dims.z, a
 # load block asset
 block_asset_list = []
 asset_options = gymapi.AssetOptions()
-asset_options.armature = 0.01
 # asset_options.fix_base_link = True
 block_type = ['A.urdf', 'B.urdf', 'C.urdf', 'D.urdf', 'E.urdf']
 for t in block_type:
@@ -263,7 +263,7 @@ franka_pose = gymapi.Transform()
 franka_pose.p = gymapi.Vec3(0, 0, 0)
 
 table_pose = gymapi.Transform()
-table_pose.p = gymapi.Vec3(0.45, 0.0, 0.5 * table_dims.z)
+table_pose.p = gymapi.Vec3(0.4, 0.0, 0.5 * table_dims.z)
 
 region_pose = gymapi.Transform()
 
@@ -287,7 +287,9 @@ plane_params = gymapi.PlaneParams()
 plane_params.normal = gymapi.Vec3(0, 0, 1)
 gym.add_ground(sim, plane_params)
 
+
 for i in range(num_envs):
+
     # create env
     env = gym.create_env(sim, env_lower, env_upper, num_per_row)
     envs.append(env)
@@ -296,6 +298,9 @@ for i in range(num_envs):
     table_handle = gym.create_actor(env, table_asset, table_pose, "table", i,0)
 
     # add region
+    # region_x = np.random.uniform(-0.1,0.1)
+    # region_y = np.random.uniform(-0.1,0.1)
+
     region_pose.p.x = table_pose.p.x + region_xy[0]
     region_pose.p.y = table_pose.p.y + region_xy[1]
     region_pose.p.z = table_dims.z #+ 0.001
@@ -313,6 +318,21 @@ for i in range(num_envs):
 
 
     for j, idx in enumerate(goal_list):
+        
+
+        # while True:
+        #     rand_x = np.random.uniform(-0.15,0.15)
+        #     rand_y = np.random.uniform(-0.25,0.25)
+        #     flag = False
+        #     for pos in pos_list:
+        #         if np.linalg.norm(np.array((region_x,region_y))-np.array((rand_x,rand_y)))<0.05 or np.linalg.norm(pos-np.array((rand_x,rand_y))<0.02):
+        #             flag=True
+        #     if flag:
+        #         continue
+        #     else:
+        #         break
+        
+        # pos_list.append(np.array((rand_x,rand_y)))
 
         block_pose = gymapi.Transform()
         block_pose.p.x = table_pose.p.x + rand_xy[j,0]
@@ -513,8 +533,9 @@ op = True
 
 pick_counter = 0
 place_counter = 0
-
-
+to_place_counter = 0
+picked_counter = 0
+placed_counter = 0
 # simulation loop
 while viewer is None or not gym.query_viewer_has_closed(viewer):
 
@@ -542,11 +563,12 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
     gripper_close = torch.Tensor(franka_lower_limits[7:]).to(device)
 
 
+
     if step < max_step:
 
         # print(step)
         
-        if torch.norm(goal_prepick_pos_list[step] - hand_pos) < 0.001 and torch.norm(orientation_error(goal_pick_rot_list[step],hand_rot))< 0.1:
+        if torch.norm(goal_prepick_pos_list[step] - hand_pos) < 0.001 and torch.norm(orientation_error(goal_pick_rot_list[step],hand_rot))< 0.05 and not picked:
             to_prepick = True
         else:
             goal_pos = goal_prepick_pos_list[step]
@@ -559,7 +581,7 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
 
         
 
-        if torch.norm(goal_pick_pos_list[step] - hand_pos) < 0.001 and torch.norm(orientation_error(goal_pick_rot_list[step],hand_rot))< 0.1:
+        if torch.norm(goal_pick_pos_list[step] - hand_pos) < 0.001 and torch.norm(orientation_error(goal_pick_rot_list[step],hand_rot))< 0.05 and to_prepick:
             to_pick = True
 
         
@@ -571,14 +593,19 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
                 picked = True
         
         if picked:
-            goal_pos = goal_preplace_pos_list[step]
-            goal_rot = goal_place_rot_list[step]
+            goal_pos = goal_prepick_pos_list[step]
+            goal_rot = goal_pick_rot_list[step]
+            picked_counter += 1
+            if picked_counter>=30:
+                goal_pos = goal_preplace_pos_list[step]
+                goal_rot = goal_place_rot_list[step]
+
 
 
         # print("pos: ",torch.norm(goal_preplace_pos - hand_pos))
         # print("rot: ", torch.norm(orientation_error(goal_place_rot, hand_rot)))
             
-        if torch.norm(goal_preplace_pos_list[step] - hand_pos) < 0.005 and torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)) < 0.1:
+        if torch.norm(goal_preplace_pos_list[step] - hand_pos) < 0.005 and torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)) < 0.05 and picked and not placed:
             to_preplace = True
             
         if to_preplace:
@@ -587,28 +614,37 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
             print(torch.norm(goal_place_pos_list[step] - hand_pos))
             print(torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)))
         # print(torch.norm(goal_place_pos - hand_pos), torch.norm(orientation_error(goal_place_rot,hand_rot)))
-        if torch.norm(goal_place_pos_list[step] - hand_pos) < 0.005 and torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)) < 0.1:
-            to_place = True
+        if torch.norm(goal_place_pos_list[step] - hand_pos) < 0.02 and torch.norm(orientation_error(goal_place_rot_list[step], hand_rot)) < 0.05 and to_preplace:
+            to_place_counter+=1
+            if to_place_counter>=30:
+                to_place = True
 
         if to_place:
             pos_action[:,7:9] = gripper_open
             place_counter+=1
             if place_counter >= 30:
                 placed = True
+        
         if placed:
             print("placed")
             pos_action[:,7:9] = gripper_open
-            goal_pos = init_pos
-            goal_rot = init_rot
-            pick_counter = 0
-            place_counter = 0
-            step+=1
-            to_prepick = False
-            to_pick = False
-            to_preplace = False
-            to_place = False
-            picked = False
-            placed = False
+            
+            goal_pos = goal_preplace_pos_list[step]
+            goal_rot = goal_place_rot_list[step]
+            placed_counter += 1
+            if placed_counter>=30:
+                pick_counter = 0
+                place_counter = 0
+                to_place_counter = 0
+                step+=1
+                to_prepick = False
+                to_pick = False
+                to_preplace = False
+                to_place = False
+                picked = False
+                placed = False
+                placed_counter = 0
+                picked_counter = 0
     
 
     

@@ -35,6 +35,10 @@ gym = gymapi.acquire_gym()
 # parse arguments
 args = gymutil.parse_arguments(description="Joint control Methods Example")
 
+# set torch device
+device = args.sim_device if args.use_gpu_pipeline else 'cpu'
+
+
 # create a simulator
 sim_params = gymapi.SimParams()
 sim_params.substeps = 2
@@ -81,7 +85,7 @@ env_lower = gymapi.Vec3(-spacing, -spacing, 0.0)
 env_upper = gymapi.Vec3(spacing, spacing, 0.0)
 
 # add urdf asset
-asset_root = "../../assets"
+asset_root = "assets"
 asset_file = "urdf/mano/zeros/mano_addtips.urdf"
 # ycb_asset_file = "urdf/ycb/002_master_chef_can/002_master_chef_can.urdf"
 ycb_asset_file = "urdf/block_assembly/block_D.urdf"
