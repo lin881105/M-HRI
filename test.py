@@ -29,23 +29,31 @@ from scipy.spatial.transform import Rotation as R
 # import pytorch3d.transforms
 from tqdm import trange
 
-region_x = np.random.uniform(-0.1,0.1)
-region_y = np.random.uniform(-0.1,0.1)
-pos_list = []
-for i in trange(3):
-    while True:
-        rand_x = np.random.uniform(-0.15,0.15)
-        rand_y = np.random.uniform(-0.25,0.25)
-        flag = False
-        for pos in pos_list:
-            if np.linalg.norm(np.array((region_x,region_y))-np.array((rand_x,rand_y)))<0.05 or np.linalg.norm(pos-np.array((rand_x,rand_y))<0.02):
-                flag=True
-        if flag:
-            continue
-        else:
-            break
+def check_in_region(region_xy, rand_xy):
+    for i in range(rand_xy.shape[0]):
+        if np.linalg.norm(region_xy - rand_xy[i]) < 0.08:
+            return True
     
-    pos_list.append(np.array((rand_x,rand_y)))
+    return False
+
+def check_contact_block(rand_xy):
+    for i in range(rand_xy.shape[0]):
+        for j in range(i+1, rand_xy.shape[0]):
+            if np.linalg.norm(rand_xy[i] - rand_xy[j]) < 0.08:
+                return True
+            
+    return False
+
+region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], 2)
+
+while True:
+    rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (3, 2))
+    
+    if check_in_region(region_xy, rand_xy) or check_contact_block(rand_xy):
+        continue
+    else:
+        break
+    
 print("success generate initial pos!!!")
 
 def quat_axis(q, axis=0):
@@ -293,8 +301,8 @@ for i in range(num_envs):
     # region_x = np.random.uniform(-0.1,0.1)
     # region_y = np.random.uniform(-0.1,0.1)
 
-    region_pose.p.x = table_pose.p.x + region_x
-    region_pose.p.y = table_pose.p.y + region_y
+    region_pose.p.x = table_pose.p.x + region_xy[0]
+    region_pose.p.y = table_pose.p.y + region_xy[1]
     region_pose.p.z = table_dims.z #+ 0.001
     region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
     
@@ -327,8 +335,8 @@ for i in range(num_envs):
         # pos_list.append(np.array((rand_x,rand_y)))
 
         block_pose = gymapi.Transform()
-        block_pose.p.x = table_pose.p.x + pos_list[j][0]
-        block_pose.p.y = table_pose.p.y + pos_list[j][1]
+        block_pose.p.x = table_pose.p.x + rand_xy[j,0]
+        block_pose.p.y = table_pose.p.y + rand_xy[j,1]
         block_pose.p.z = table_dims.z + 0.03
 
         r1 = R.from_euler('z', np.random.uniform(-math.pi, math.pi))

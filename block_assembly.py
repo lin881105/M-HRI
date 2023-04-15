@@ -28,6 +28,33 @@ from utils import utils
 from scipy.spatial.transform import Rotation as R
 # import pytorch3d.transforms
 
+def check_in_region(region_xy, rand_xy):
+    for i in range(rand_xy.shape[0]):
+        if np.linalg.norm(region_xy - rand_xy[i]) < 0.08:
+            return True
+    
+    return False
+
+def check_contact_block(rand_xy):
+    for i in range(rand_xy.shape[0]):
+        for j in range(i+1, rand_xy.shape[0]):
+            if np.linalg.norm(rand_xy[i] - rand_xy[j]) < 0.08:
+                return True
+            
+    return False
+
+region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], 2)
+
+while True:
+    rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (3, 2))
+    
+    if check_in_region(region_xy, rand_xy) or check_contact_block(rand_xy):
+        continue
+    else:
+        break
+    
+print("success generate initial pos!!!")
+
 def quat_axis(q, axis=0):
     basis_vec = torch.zeros(q.shape[0], 3, device=q.device)
     basis_vec[:, axis] = 1
@@ -269,8 +296,8 @@ for i in range(num_envs):
     table_handle = gym.create_actor(env, table_asset, table_pose, "table", i,0)
 
     # add region
-    region_pose.p.x = table_pose.p.x + np.random.uniform(-0.1, 0.1)
-    region_pose.p.y = table_pose.p.y + np.random.uniform(-0.1, 0.1)
+    region_pose.p.x = table_pose.p.x + region_xy[0]
+    region_pose.p.y = table_pose.p.y + region_xy[1]
     region_pose.p.z = table_dims.z #+ 0.001
     region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
     
@@ -288,8 +315,8 @@ for i in range(num_envs):
     for j, idx in enumerate(goal_list):
 
         block_pose = gymapi.Transform()
-        block_pose.p.x = table_pose.p.x + np.random.uniform(-0.13, 0.13)
-        block_pose.p.y = table_pose.p.y + np.random.uniform(-0.25, 0.25)
+        block_pose.p.x = table_pose.p.x + rand_xy[j,0]
+        block_pose.p.y = table_pose.p.y + rand_xy[j,1]
         block_pose.p.z = table_dims.z + 0.03
 
         r1 = R.from_euler('z', np.random.uniform(-math.pi, math.pi))
