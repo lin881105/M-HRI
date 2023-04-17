@@ -64,9 +64,11 @@ class BlockAssembly():
         self.num_envs = 10
         self.env_spacing = 1.5
         self.max_episode_length = 195
+        
+        
 
         self.create_sim()
-        
+        self.get_hand_rel_mat()
         # create viewer using the default camera properties
         self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
 
@@ -85,6 +87,7 @@ class BlockAssembly():
 
         # self.stage_tensor = torch.zeros((self.num_envs),dtype=torch.long).to(self.device)
         self.stage = 0
+        
 
         # self.get_step_size()
 
@@ -166,7 +169,7 @@ class BlockAssembly():
         block_asset_list = []
         asset_options = gymapi.AssetOptions()
         asset_options.armature = 0.01
-        # asset_options.fix_base_link = True
+        asset_options.fix_base_link = True
         block_type = ['A.urdf', 'B.urdf', 'C.urdf', 'D.urdf', 'E.urdf']
         for t in block_type:
             block_asset_list.append(self.gym.load_asset(self.sim, asset_root, 'urdf/block_assembly/block_' + t, asset_options))
@@ -191,13 +194,13 @@ class BlockAssembly():
         # ycb_rb_props[0].rolling_friction = 1
 
         # set default pose
-        self.hand_init_pose = np.eye(4)
-        self.hand_init_pose[:3,3] = np.array((0,0,0.5))
-        self.hand_init_pose[:3,:3] = R.from_euler("xyz",(-90,180,0),degrees=True).as_matrix()
-        # handobj_start_pose = gymapi.Transform()
-        # handobj_start_pose.p = gymapi.Vec3(0, 0, 0.3)
-        # handobj_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-        self.handobj_start_pose = utils.mat2gymapi_transform(self.hand_init_pose)
+        # self.hand_init_pose = np.eye(4)
+        # self.hand_init_pose[:3,3] = np.array((0,0,0.5))
+        # self.hand_init_pose[:3,:3] = R.from_euler("xyz",(-90,180,0),degrees=True).as_matrix()
+        handobj_start_pose = gymapi.Transform()
+        handobj_start_pose.p = gymapi.Vec3(0, 0, 0.0)
+        handobj_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        # self.handobj_start_pose = utils.mat2gymapi_transform(self.hand_init_pose)
 
         table_pose = gymapi.Transform()
         table_pose.p = gymapi.Vec3(0.45, 0.0, 0.5 * table_dims.z)
@@ -213,6 +216,7 @@ class BlockAssembly():
         # self.rel_pick_pos = mat_dict["pick_pose"]
         # self.rel_place_pos = mat_dict["place_pose"]
         self.block_pos_world = mat_dict["block_world"]
+        self.block_height = mat_dict["block_height"]
 
         # cache some common handles for later use
         self.mano_indices, self.table_indices = [], []
@@ -229,11 +233,11 @@ class BlockAssembly():
             self.envs.append(env_ptr)
 
             # create table and set properties
-            table_handle = self.gym.create_actor(env_ptr, table_asset, table_pose, "table", i, 1, 0) # 001
-            table_sim_index = self.gym.get_actor_index(env_ptr, table_handle, gymapi.DOMAIN_SIM)
-            self.table_indices.append(table_sim_index)
+            # table_handle = self.gym.create_actor(env_ptr, table_asset, table_pose, "table", i, 1, 0) # 001
+            # table_sim_index = self.gym.get_actor_index(env_ptr, table_handle, gymapi.DOMAIN_SIM)
+            # self.table_indices.append(table_sim_index)
 
-            self.gym.set_rigid_body_color(env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(60, 33, 0) / 255)
+            # self.gym.set_rigid_body_color(env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(60, 33, 0) / 255)
 
             # add region
             region_pose.p.x = table_pose.p.x + region_xy[0]
@@ -250,7 +254,7 @@ class BlockAssembly():
                 block_pose = gymapi.Transform()
                 block_pose.p.x = table_pose.p.x + rand_xy[cnt, 0]
                 block_pose.p.y = table_pose.p.y + rand_xy[cnt, 1]
-                block_pose.p.z = table_dims.z + 0.03
+                block_pose.p.z = table_dims.z + self.block_height[0][cnt]
 
                 angle = np.random.uniform(-math.pi, math.pi)
                 r1 = R.from_euler('z', angle)
@@ -281,14 +285,15 @@ class BlockAssembly():
             for j in range(len(self.block_list)):
                 tmp_pose = utils.mat2gymapi_transform(utils.gymapi_transform2mat(region_pose) @ self.goal_pose[j])
                 goal_place_pose = torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,tmp_pose.p.z,tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device)
-                goal_preplace_pose = torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,0.7,tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device)
+                # goal_preplace_pose = torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,0.7,tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device)
                 # goal.append(goal_preplace_pose)
                 goal.append(goal_place_pose)
                 # goal.append(goal_preplace_pose)
             
             _goal_list.append(torch.stack(goal))
+
             # create mano and set properties
-            mano_handle = self.gym.create_actor(env_ptr, mano_asset, self.handobj_start_pose, "mano", i, 2 ** (len(self.block_list)), len(self.block_list) + 2) # 100
+            mano_handle = self.gym.create_actor(env_ptr, mano_asset, handobj_start_pose, "mano", i, 2 ** (len(self.block_list)), len(self.block_list) + 2) # 100
             mano_sim_index = self.gym.get_actor_index(env_ptr, mano_handle, gymapi.DOMAIN_SIM)
             self.mano_indices.append(mano_sim_index)
 
@@ -332,28 +337,41 @@ class BlockAssembly():
         pass
 
     def get_hand_rel_mat(self):
-        obj_init = np.array([-0.19434147, -0.11968146, 0.01548913, -0.50471319, 0.49524648, -0.4952225 , 0.50472785])
+        # obj_init = np.array([-0.19434147, -0.11968146, 0.01548913, -0.50471319, 0.49524648, -0.4952225 , 0.50472785])
+        obj_init = np.array([-0.14587866,  0.20421203,  0.02021903, -0.06949283, -0.103413  ,-0.43897412,  0.88929234]) # 拱門
+
         obj_init_mat = np.eye(4)
         obj_init_mat[:3, :3] = R.from_quat(obj_init[3:7]).as_matrix()
         obj_init_mat[:3, 3] = obj_init[0:3]
 
-        hand_goal_pose = np.array([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
-        1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
-        4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
-       -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
-       -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
-        8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
-       -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
-       -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
-        3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
-       -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
-        8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
-        1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
-        6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=np.float32)
+    #     hand_goal_pose = np.array([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
+    #     1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
+    #     4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
+    #    -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
+    #    -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
+    #     8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
+    #    -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
+    #    -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
+    #     3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
+    #    -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
+    #     8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
+    #     1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
+    #     6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=np.float32)
+        hand_goal_pose = np.array([-0.10150228,  0.19490343,  0.07588965,  1.0861137 , -0.84895056,
+       -0.54786706,  0.22902231, -0.28977403,  0.3116039 ,  0.08973111,
+        0.00571879,  0.7467749 , -0.11694898,  0.04409688,  0.22905038,
+       -0.11792404, -0.33667254,  0.7789884 , -0.06663863, -0.14730793,
+        0.6393313 ,  0.01266811,  0.01322488,  0.34988308, -0.8594047 ,
+        0.06921063,  0.82026833, -0.15663488,  0.00436937,  0.5340845 ,
+       -0.32596567,  0.12056006,  0.24855043, -0.23608978, -0.01125655,
+        0.8863701 , -0.3165149 , -0.05750437,  0.5138516 , -0.19815606,
+        0.10261149,  0.455346  ,  1.094469  , -0.236023  ,  0.30784672,
+       -0.59952945,  0.06054716, -0.09722855,  0.57003605,  0.07307385,
+        0.2632291 ], dtype=np.float32) #拱門
         hand_goal_mat = np.eye(4)
         hand_goal_mat[:3, :3] = R.from_euler("XYZ", hand_goal_pose[3:6]).as_matrix()
         hand_goal_mat[:3, 3] = hand_goal_pose[0:3]
-        return torch.tensor(np.linalg.inv(obj_init_mat) @ hand_goal_mat, dtype=torch.float32).to(self.device)
+        self.hand_rel_mat = torch.tensor(np.linalg.inv(obj_init_mat) @ hand_goal_mat, dtype=torch.float32).to(self.device)
     
     def get_step_size(self):
         step_size_list = []
@@ -378,11 +396,38 @@ class BlockAssembly():
         self.step_size_list = torch.stack(step_size_list).to(self.device)
     
     def set_hand_pos(self,new_wrist_mat):
+    #     hand_goal_pose = torch.tensor([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
+    #     1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
+    #     4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
+    #    -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
+    #    -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
+    #     8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
+    #    -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
+    #    -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
+    #     3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
+    #    -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
+    #     8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
+    #     1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
+    #     6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=torch.float32).to(self.device)
+
+        hand_goal_pose = torch.tensor([-0.10150228,  0.19490343,  0.07588965,  1.0861137 , -0.84895056,
+       -0.54786706,  0.22902231, -0.28977403,  0.3116039 ,  0.08973111,
+        0.00571879,  0.7467749 , -0.11694898,  0.04409688,  0.22905038,
+       -0.11792404, -0.33667254,  0.7789884 , -0.06663863, -0.14730793,
+        0.6393313 ,  0.01266811,  0.01322488,  0.34988308, -0.8594047 ,
+        0.06921063,  0.82026833, -0.15663488,  0.00436937,  0.5340845 ,
+       -0.32596567,  0.12056006,  0.24855043, -0.23608978, -0.01125655,
+        0.8863701 , -0.3165149 , -0.05750437,  0.5138516 , -0.19815606,
+        0.10261149,  0.455346  ,  1.094469  , -0.236023  ,  0.30784672,
+       -0.59952945,  0.06054716, -0.09722855,  0.57003605,  0.07307385,
+        0.2632291 ], dtype=torch.float32).to(self.device) # 拱門
+
+
         
         self.dof_state[:, 0:3, 0] = new_wrist_mat[:, :3, 3]
         self.dof_state[:, 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
-
-        print(self.dof_state[:, :, 0])
+        self.dof_state[:,6:,0] = hand_goal_pose[6:]
+        # print(self.dof_state[:, :, 0])
         
         dof_indices = self.mano_indices.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
@@ -397,17 +442,30 @@ class BlockAssembly():
 
 
     
-    def update(self,count):
+    def update(self):
 
         # goal_pose = self.goal_list[:,:,self.stage]
         # print(self.goal_list.shape)
         # exit()
+    
+        # # set object pose
+        # self.root_state_tensor[self.block_indices[:,1], 2] += 0.001
+        # goal_obj_indices = torch.tensor(self.block_indices[:,1]).to(torch.int32)
+        # self.gym.set_actor_root_state_tensor_indexed(self.sim,
+        #                                         gymtorch.unwrap_tensor(self.root_state_tensor),
+        #                                         gymtorch.unwrap_tensor(goal_obj_indices), len(goal_obj_indices))
 
-        block_pose = self.root_state_tensor[self.block_indices[:,0],:7]
-
+        block_pose = self.root_state_tensor[self.block_indices[:,2],:7]
+   
         cur_obj_mat = torch.eye(4).unsqueeze(0).repeat(self.num_envs, 1, 1).to(self.device)
         cur_obj_mat[:,:3, 3] = block_pose[:,:3]
         cur_obj_mat[:,:3, :3] = pytorch3d.transforms.quaternion_to_matrix(block_pose[:, [6,3,4,5]])
+
+        target_hand_pose = cur_obj_mat @ self.hand_rel_mat
+        
+        # target_hand_pose = np.array([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
+        # 1.03342474e+00,  6.83313906e-01], dtype=np.float32)
+        self.set_hand_pos(target_hand_pose)
 
         # print(block_pose)
         
@@ -418,7 +476,7 @@ class BlockAssembly():
 
         # np.array([-0.19434147, -0.11968146, 0.01548913, -0.50471319, 0.49524648, -0.4952225 , 0.50472785])
 
-        target_hand_pose = cur_obj_mat @ self.get_hand_rel_mat()
+
 
         # target_hand_pos = target_hand_pose[:,:3]
 
@@ -428,7 +486,7 @@ class BlockAssembly():
 
         # cur_hand_rot = self.dof_state[:,3:6,0]
 
-        self.set_hand_pos(target_hand_pose)
+        
 
         # print(self.dof_state[:,3:6,0])
 
@@ -523,7 +581,7 @@ class BlockAssembly():
             # print(self.block_indices)
             # print(self.step_size_list.shape)
 
-            cnt = self.update(cnt)
+            self.update()
 
 
             # print('-' * 10)

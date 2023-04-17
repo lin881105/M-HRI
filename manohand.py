@@ -302,6 +302,7 @@ net_contact_force = gymtorch.wrap_tensor(_net_contact_force)
 
 cnt = 0
 # Simulate
+
 while not gym.query_viewer_has_closed(viewer):
     cnt += 1
     print('cnt = ', cnt)

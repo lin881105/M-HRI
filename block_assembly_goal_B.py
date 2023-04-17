@@ -271,98 +271,95 @@ plane_params = gymapi.PlaneParams()
 plane_params.normal = gymapi.Vec3(0, 0, 1)
 gym.add_ground(sim, plane_params)
 
-for i in range(num_envs):
-    # create env
-    env = gym.create_env(sim, env_lower, env_upper, num_per_row)
-    envs.append(env)
 
-    # add table
-    table_handle = gym.create_actor(env, table_asset, table_pose, "table", i, 0)
+env = gym.create_env(sim, env_lower, env_upper, num_per_row)
+envs.append(env)
 
-    ball_handle = gym.create_actor(env, sphere_asset, initial_pose, "ball", i+1)
-    
-    # add region
-    region_pose.p.x = table_pose.p.x + np.random.uniform(-0.2, 0.1)
-    region_pose.p.y = table_pose.p.y + np.random.uniform(-0.3, 0.3)
-    region_pose.p.z = table_dims.z #+ 0.001
-    region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+# add table
+table_handle = gym.create_actor(env, table_asset, table_pose, "table", 0, 0)
 
-    # add target region
-    black = gymapi.Vec3(0.,0.,0.)
-    region_handle = gym.create_actor(env, region_asset, region_pose, "target_reginon", i)
-    gym.set_rigid_body_color(env, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, black)
+ball_handle = gym.create_actor(env, sphere_asset, initial_pose, "ball", 0+1)
 
-    goal_A = [0,0,1]
-    goal_A_pose = []
+# add region
+region_pose.p.x = table_pose.p.x + np.random.uniform(-0.2, 0.1)
+region_pose.p.y = table_pose.p.y + np.random.uniform(-0.3, 0.3)
+region_pose.p.z = table_dims.z #+ 0.001
+region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
 
-    goal_A_pose_1 = gymapi.Transform()
-    goal_A_pose_1.p = gymapi.Vec3(0, 0.0255, 0.03)
-    goal_A_pose_1.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
+# add target region
+black = gymapi.Vec3(0.,0.,0.)
+region_handle = gym.create_actor(env, region_asset, region_pose, "target_reginon", 0)
+gym.set_rigid_body_color(env, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, black)
 
-    goal_A_pose_2 = gymapi.Transform()
-    goal_A_pose_2.p = gymapi.Vec3(0, -0.0255, 0.03)
-    goal_A_pose_2.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
+goal = [3,3]
+goal_pose = []
 
-    goal_A_pose_3 = gymapi.Transform()
-    goal_A_pose_3.p = gymapi.Vec3(0, 0, 0.0745)
-    goal_A_pose_3.r = gymapi.Quat.from_euler_zyx(math.pi*0.5,0,math.pi*0.5)
+goal_pose_1 = gymapi.Transform()
+goal_pose_1.p = gymapi.Vec3(0, 0.0, 0.0145)
+goal_pose_1.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
 
-    
+goal_pose_2 = gymapi.Transform()
+goal_pose_2.p = gymapi.Vec3(0, 0, 0.0435)
+goal_pose_2.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
 
-    goal_A_pose.append(utils.gymapi_transform2mat(goal_A_pose_1))
-    goal_A_pose.append(utils.gymapi_transform2mat(goal_A_pose_2))
-    goal_A_pose.append(utils.gymapi_transform2mat(goal_A_pose_3))
+block_height = [0.0145,0.0145]
 
-    block_list = []
-    block_pose_world = []
-    
-    for j, idx in enumerate(goal_A):
-        block_pose = utils.multiply_gymapi_transform(region_pose, utils.mat2gymapi_transform(goal_A_pose[j]))
-        block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i)
-        color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
-        gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
-        block_pose_world.append(block_pose)
-        block_list.append(block_handle)
 
-    # for j in len(goal_A):
+goal_pose.append(utils.gymapi_transform2mat(goal_pose_1))
+goal_pose.append(utils.gymapi_transform2mat(goal_pose_2))
 
-    #     body_states = gym.get_actor_rigid_body_states(env, block_list[j], gymapi.STATE_ALL)
 
-    #     tmp_mat = np.eye(4)
-    #     tmp_mat[:3, :3] = R.from_quat(np.array([body_states["pose"]["r"]["x"],
-    #                                             body_states["pose"]["r"]["y"],
-    #                                             body_states["pose"]["r"]["z"],
-    #                                             body_states["pose"]["r"]["w"]]).reshape(-1)).as_matrix()
-    #     tmp_mat[:3, 3] = np.array([body_states["pose"]["p"]["x"], body_states["pose"]["p"]["y"], body_states["pose"]["p"]["z"]]).reshape(-1)
+block_list = []
+block_pose_world = []
 
-            
-    # add franka
-    franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2)
+for j, idx in enumerate(goal):
+    block_pose = utils.multiply_gymapi_transform(region_pose, utils.mat2gymapi_transform(goal_pose[j]))
+    block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], 0)
+    color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+    gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
-    # set dof properties
-    gym.set_actor_dof_properties(env, franka_handle, franka_dof_props)
+    block_pose_world.append(block_pose)
+    block_list.append(block_handle)
 
-    # set initial dof states
-    gym.set_actor_dof_states(env, franka_handle, default_dof_state, gymapi.STATE_ALL)
+# for j in len(goal_A):
 
-    # set initial position targets
-    gym.set_actor_dof_position_targets(env, franka_handle, default_dof_pos)
+#     body_states = gym.get_actor_rigid_body_states(env, block_list[j], gymapi.STATE_ALL)
 
-    # get inital hand pose
-    hand_handle = gym.find_actor_rigid_body_handle(env, franka_handle, "panda_hand")
-    hand_pose = gym.get_rigid_transform(env, hand_handle)
-    init_pos_list.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z])
-    init_rot_list.append([hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w])
+#     tmp_mat = np.eye(4)
+#     tmp_mat[:3, :3] = R.from_quat(np.array([body_states["pose"]["r"]["x"],
+#                                             body_states["pose"]["r"]["y"],
+#                                             body_states["pose"]["r"]["z"],
+#                                             body_states["pose"]["r"]["w"]]).reshape(-1)).as_matrix()
+#     tmp_mat[:3, 3] = np.array([body_states["pose"]["p"]["x"], body_states["pose"]["p"]["y"], body_states["pose"]["p"]["z"]]).reshape(-1)
 
-    # get global index of hand in rigid body state tensor
-    hand_idx = gym.find_actor_rigid_body_index(env, franka_handle, "panda_hand", gymapi.DOMAIN_SIM)
-    hand_idxs.append(hand_idx)
+        
+# add franka
+franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", 0, 2)
 
-    ball_state = gym.get_actor_rigid_body_states(env, ball_handle, gymapi.STATE_ALL)
-    ball_state["pose"]["p"] = tuple(np.array([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z]))
+# set dof properties
+gym.set_actor_dof_properties(env, franka_handle, franka_dof_props)
 
-    gym.set_actor_rigid_body_states(env, ball_handle, ball_state, gymapi.STATE_ALL)
+# set initial dof states
+gym.set_actor_dof_states(env, franka_handle, default_dof_state, gymapi.STATE_ALL)
+
+# set initial position targets
+gym.set_actor_dof_position_targets(env, franka_handle, default_dof_pos)
+
+# get inital hand pose
+hand_handle = gym.find_actor_rigid_body_handle(env, franka_handle, "panda_hand")
+hand_pose = gym.get_rigid_transform(env, hand_handle)
+init_pos_list.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z])
+init_rot_list.append([hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w])
+
+# get global index of hand in rigid body state tensor
+hand_idx = gym.find_actor_rigid_body_index(env, franka_handle, "panda_hand", gymapi.DOMAIN_SIM)
+hand_idxs.append(hand_idx)
+
+ball_state = gym.get_actor_rigid_body_states(env, ball_handle, gymapi.STATE_ALL)
+ball_state["pose"]["p"] = tuple(np.array([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z]))
+
+gym.set_actor_rigid_body_states(env, ball_handle, ball_state, gymapi.STATE_ALL)
 
 # point camera at middle env
 cam_pos = gymapi.Vec3(4, 3, 2)
@@ -425,10 +422,10 @@ camera_properties = gymapi.CameraProperties()
 camera_properties.width = 640
 camera_properties.height = 480
 
-camera_handle = gym.create_camera_sensor(envs[i], camera_properties)
+camera_handle = gym.create_camera_sensor(envs[0], camera_properties)
 camera_position = gymapi.Vec3(1, 0.5, 1.0)
 camera_target = gymapi.Vec3(0, 0, 0)
-gym.set_camera_location(camera_handle, envs[i], camera_position, camera_target)
+gym.set_camera_location(camera_handle, envs[0], camera_position, camera_target)
 
 
 img = []
@@ -520,7 +517,7 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
     # gym.set_dof_actuation_force_tensor(sim, gymtorch.unwrap_tensor(effort_action))
     rgb_filename = "output_grasp/frame%d.png" % (frame_count)
     frame_count += 1
-    gym.write_camera_image_to_file(sim, envs[i], camera_handle, gymapi.IMAGE_COLOR, rgb_filename)
+    gym.write_camera_image_to_file(sim, envs[0], camera_handle, gymapi.IMAGE_COLOR, rgb_filename)
 
 
     # update viewer
@@ -548,7 +545,7 @@ grasp_rot.append(torch.tensor([[ 0.9964, -0.0241,  0.0627,  0.0516]], device='cu
 
 
 
-i = len(goal_A_pose)
+i = len(goal_pose)
 
 block_world_pos = []
 
@@ -558,20 +555,23 @@ for pos, quat in zip(grasp_pose, grasp_rot):
     # block_world_pos.insert(0,utils.gymapi_transform2mat(region_pose) @ goal_A_pose[i-1])
     # print(np.linalg.inv(utils.gymapi_transform2mat(region_pose) @ goal_A_pose[i-1]) @ utils.tensor_6d_pose2mat(pos, quat))
     # rel_pick_pos.insert(0, np.linalg.inv(utils.gymapi_transform2mat(region_pose) @ goal_A_pose[i-1]) @ utils.tensor_6d_pose2mat(pos, quat))
-    rel_pick_pos.insert(0, np.linalg.inv(goal_A_pose[i-1]) @ rel_pos)
+    rel_pick_pos.insert(0, np.linalg.inv(goal_pose[i-1]) @ rel_pos)
     
     i-=1
 
 
 
 
+
+
 goal_A_data = {
-    "block_list": goal_A, 
-    "block_pose": goal_A_pose,
+    "block_list": goal, 
+    "block_pose": goal_pose,
     "pick_pose": rel_pick_pos,
     "place_pose": rel_place_pos,
     "block_world": block_world_pos,
+    "block_height": block_height,
 }
 
-sio.savemat("goal/block_assembly/goal_A_data.mat",goal_A_data)
+sio.savemat("goal/block_assembly/goal_B_data.mat",goal_A_data)
 
