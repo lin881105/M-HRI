@@ -14,6 +14,8 @@ from utils import utils
 from scipy.spatial.transform import Rotation as R
 import pytorch3d.transforms
 
+# set random seed
+np.random.seed(20)
 custom_parameters = [
     {"name": "--controller", "type": str, "default": "ik", "help": "Controller to use for Franka. Options are {ik, osc}"},
     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
@@ -84,7 +86,7 @@ class BlockAssembly():
         # self.stage_tensor = torch.zeros((self.num_envs),dtype=torch.long).to(self.device)
         self.stage = 0
 
-        self.get_step_size()
+        # self.get_step_size()
 
     def create_sim(self):
 
@@ -243,23 +245,26 @@ class BlockAssembly():
             self.gym.set_rigid_body_color(env_ptr, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0., 0., 0.))
 
             goal = []
+            np.random.seed(20)
             for cnt, idx in enumerate(self.block_list):
                 block_pose = gymapi.Transform()
                 block_pose.p.x = table_pose.p.x + rand_xy[cnt, 0]
                 block_pose.p.y = table_pose.p.y + rand_xy[cnt, 1]
                 block_pose.p.z = table_dims.z + 0.03
 
-                r1 = R.from_euler('z', np.random.uniform(-math.pi, math.pi))
+                angle = np.random.uniform(-math.pi, math.pi)
+                r1 = R.from_euler('z', angle)
                 r2 = R.from_matrix(self.goal_pose[cnt][:3,:3])
                 rot = r1 * r2
                 euler = rot.as_euler("xyz", degrees=False)
 
                 block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
+            
                 # block_pose=utils.mat2gymapi_transform(block_pos_world[cnt])
                 block_handle = self.gym.create_actor(env_ptr, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i, 2 ** (cnt + 1), cnt + 2) # 010
-                goal.append(torch.tensor((block_pose.p.x,block_pose.p.y,0.7,block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)).to(self.device))
+                # goal.append(torch.tensor((block_pose.p.x,block_pose.p.y,0.7,block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)).to(self.device))
                 goal.append(torch.tensor((block_pose.p.x,block_pose.p.y,block_pose.p.z,block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)).to(self.device))
-                goal.append(torch.tensor((block_pose.p.x,block_pose.p.y,0.7,block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)).to(self.device))
+                # goal.append(torch.tensor((block_pose.p.x,block_pose.p.y,0.7,block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)).to(self.device))
                 # block_pose = utils.mat2gymapi_transform(utils.gymapi_transform2mat(region_pose)@goal_pose[cnt])
                 # block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i+1)
                 # block_handles.append(block_handle)
@@ -277,9 +282,9 @@ class BlockAssembly():
                 tmp_pose = utils.mat2gymapi_transform(utils.gymapi_transform2mat(region_pose) @ self.goal_pose[j])
                 goal_place_pose = torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,tmp_pose.p.z,tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device)
                 goal_preplace_pose = torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,0.7,tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device)
-                goal.append(goal_preplace_pose)
+                # goal.append(goal_preplace_pose)
                 goal.append(goal_place_pose)
-                goal.append(goal_preplace_pose)
+                # goal.append(goal_preplace_pose)
             
             _goal_list.append(torch.stack(goal))
             # create mano and set properties
@@ -348,21 +353,22 @@ class BlockAssembly():
         hand_goal_mat = np.eye(4)
         hand_goal_mat[:3, :3] = R.from_euler("XYZ", hand_goal_pose[3:6]).as_matrix()
         hand_goal_mat[:3, 3] = hand_goal_pose[0:3]
-        return torch.tensor(np.linalg.inv(obj_init_mat) @ hand_goal_mat, dtype=torch.float32)
+        return torch.tensor(np.linalg.inv(obj_init_mat) @ hand_goal_mat, dtype=torch.float32).to(self.device)
     
     def get_step_size(self):
         step_size_list = []
         for i in range(self.num_envs):
             step_size = []
-            tmp_obj_pose = self.hand_init_pose @ np.linalg.inv(self.get_hand_rel_mat())
+            tmp_obj_pose = np.linalg.inv(self.get_hand_rel_mat()@np.linalg.inv(self.hand_init_pose))
+            tmp_obj_pose = utils.mat2gymapi_transform(tmp_obj_pose)
             current_pose = torch.tensor((
-                self.handobj_start_pose.p.x,
-                self.handobj_start_pose.p.y,
-                self.handobj_start_pose.p.z,
-                self.handobj_start_pose.r.x,
-                self.handobj_start_pose.r.y,
-                self.handobj_start_pose.r.z,
-                self.handobj_start_pose.r.w,
+                tmp_obj_pose.p.x,
+                tmp_obj_pose.p.y,
+                tmp_obj_pose.p.z,
+                tmp_obj_pose.r.x,
+                tmp_obj_pose.r.y,
+                tmp_obj_pose.r.z,
+                tmp_obj_pose.r.w,
             )).to(self.device)
             for j in range(len(self.goal_list[i])):
                 step_size.append((self.goal_list[i,j]-current_pose)/1000)
@@ -370,78 +376,131 @@ class BlockAssembly():
             step_size = torch.stack(step_size).to(self.device)
             step_size_list.append(step_size)
         self.step_size_list = torch.stack(step_size_list).to(self.device)
+    
+    def set_hand_pos(self,new_wrist_mat):
         
+        self.dof_state[:, 0:3, 0] = new_wrist_mat[:, :3, 3]
+        self.dof_state[:, 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
+
+        print(self.dof_state[:, :, 0])
+        
+        dof_indices = self.mano_indices.to(dtype=torch.int32)
+        self.gym.set_dof_state_tensor_indexed(self.sim,
+                                        gymtorch.unwrap_tensor(self.dof_state),
+                                        gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        
+        target = self.dof_state[:, :, 0].clone()
+        self.gym.set_dof_position_target_tensor_indexed(self.sim,
+                                                gymtorch.unwrap_tensor(target),
+                                                gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+    
 
 
     
     def update(self,count):
 
-        goal_pose = self.goal_list[self.stage]
+        # goal_pose = self.goal_list[:,:,self.stage]
+        # print(self.goal_list.shape)
+        # exit()
 
-        init_pose = self.root_state_tensor[self.block_indices[:,self.stage],:7]
-    
+        block_pose = self.root_state_tensor[self.block_indices[:,0],:7]
 
-        if self.stage%6 == 0 or self.stage%6 == 5:
-            # move hand
-            cur_obj_pose = init_pose + self.step_size_list[:,self.stage,:]*count
-            
-            cur_obj_mat = torch.eye(4).unsqueeze(0).repeat(self.num_envs, 1, 1)
-            cur_obj_mat[:,:3, 3] = cur_obj_pose[:,:3]
-            cur_obj_mat[:,:3, :3] = pytorch3d.transforms.quaternion_to_matrix(cur_obj_pose[:, [6, 3, 4, 5]])
-            new_wrist_mat = cur_obj_mat @ self.get_hand_rel_mat()
-            
-            self.dof_state[:, 0:3, 0] = new_wrist_mat[:, :3, 3]
-            self.dof_state[:, 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
-            
-            dof_indices = self.mano_indices.to(dtype=torch.int32)
-            self.gym.set_dof_state_tensor_indexed(self.sim,
-                                            gymtorch.unwrap_tensor(self.dof_state),
-                                            gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
-            
-            target = self.dof_state[:, :, 0].clone()
-            self.gym.set_dof_position_target_tensor_indexed(self.sim,
-                                                    gymtorch.unwrap_tensor(target),
-                                                    gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
-            count+=1
-            if count >= 1000:
-                self.stage_tensor += 1
-                count = 0
-            return count
+        cur_obj_mat = torch.eye(4).unsqueeze(0).repeat(self.num_envs, 1, 1).to(self.device)
+        cur_obj_mat[:,:3, 3] = block_pose[:,:3]
+        cur_obj_mat[:,:3, :3] = pytorch3d.transforms.quaternion_to_matrix(block_pose[:, [6,3,4,5]])
+
+        # print(block_pose)
         
-        else:
-             # set object pose
-            self.root_state_tensor[self.block_indices[:,self.stage//6], :7] += self.step_size_list[:,self.stage_tensor,:]
-            goal_obj_indices = torch.tensor([self.block_indices[:,self.stage_tensor/6]]).to(torch.int32)
-            self.gym.set_actor_root_state_tensor_indexed(
-                self.sim,
-                gymtorch.unwrap_tensor(self.root_state_tensor),
-                gymtorch.unwrap_tensor(goal_obj_indices),
-                len(goal_obj_indices)
-            )
+        # print(self.goal_list[:,0,:])
 
-            # set hand pose
-            cur_obj_mat = torch.eye(4)
-            cur_obj_mat[:3, 3] = cur_obj_pose[:3]
-            cur_obj_mat[:3, :3] = pytorch3d.transforms.quaternion_to_matrix(cur_obj_pose[3:7][[3, 0, 1, 2]])
-            new_wrist_mat = cur_obj_mat @ self.get_hand_rel_mat()
+        # print(cur_obj_mat)
 
-            new_wrist_mat = cur_obj_mat @ self.get_hand_rel_mat()
-            self.dof_state[0:3, 0] = new_wrist_mat[:3, 3]
-            self.dof_state[3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:3, :3], "XYZ")
-            dof_indices = self.mano_indices.to(dtype=torch.int32)
-            self.gym.set_dof_state_tensor_indexed(self.sim,
-                                            gymtorch.unwrap_tensor(self.dof_state),
-                                            gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+
+        # np.array([-0.19434147, -0.11968146, 0.01548913, -0.50471319, 0.49524648, -0.4952225 , 0.50472785])
+
+        target_hand_pose = cur_obj_mat @ self.get_hand_rel_mat()
+
+        # target_hand_pos = target_hand_pose[:,:3]
+
+        # target_hand_rot = target_hand_pose[:,3:6]
+
+        # cur_hand_pos = self.dof_state[:,0:3,0]
+
+        # cur_hand_rot = self.dof_state[:,3:6,0]
+
+        self.set_hand_pos(target_hand_pose)
+
+        # print(self.dof_state[:,3:6,0])
+
+        # print(cur_obj_mat.shape)
+
+        # print(self.get_hand_rel_mat().shape)
+        
+        # exit()
+        
+        
+
+        # if self.stage%2 == 0 or self.stage%6 == 5:
+        #     # move hand
+        #     cur_obj_pose = init_pose + self.step_size_list[:,self.stage,:]*count
             
-            target = self.dof_state[:, 0].clone()
-            self.gym.set_dof_position_target_tensor_indexed(self.sim,
-                                                    gymtorch.unwrap_tensor(target),
-                                                    gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
-            count+=1
-            if count >= 1000:
-                self.stage_tensor += 1
-                count = 0
-            return count
+        #     cur_obj_mat = torch.eye(4).unsqueeze(0).repeat(self.num_envs, 1, 1)
+        #     cur_obj_mat[:,:3, 3] = cur_obj_pose[:,:3]
+        #     cur_obj_mat[:,:3, :3] = pytorch3d.transforms.quaternion_to_matrix(cur_obj_pose[:, [6, 3, 4, 5]])
+        #     new_wrist_mat = cur_obj_mat @ self.get_hand_rel_mat()
+            
+        #     self.dof_state[:, 0:3, 0] = new_wrist_mat[:, :3, 3]
+        #     self.dof_state[:, 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
+            
+        #     dof_indices = self.mano_indices.to(dtype=torch.int32)
+        #     self.gym.set_dof_state_tensor_indexed(self.sim,
+        #                                     gymtorch.unwrap_tensor(self.dof_state),
+        #                                     gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+            
+        #     target = self.dof_state[:, :, 0].clone()
+        #     self.gym.set_dof_position_target_tensor_indexed(self.sim,
+        #                                             gymtorch.unwrap_tensor(target),
+        #                                             gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        #     count+=1
+        #     if count >= 1000:
+        #         self.stage_tensor += 1
+        #         count = 0
+        #     return count
+        
+        # else:
+        #      # set object pose
+        #     self.root_state_tensor[self.block_indices[:,self.stage//6], :7] += self.step_size_list[:,self.stage_tensor,:]
+        #     goal_obj_indices = torch.tensor([self.block_indices[:,self.stage_tensor/6]]).to(torch.int32)
+        #     self.gym.set_actor_root_state_tensor_indexed(
+        #         self.sim,
+        #         gymtorch.unwrap_tensor(self.root_state_tensor),
+        #         gymtorch.unwrap_tensor(goal_obj_indices),
+        #         len(goal_obj_indices)
+        #     )
+
+        #     # set hand pose
+        #     cur_obj_mat = torch.eye(4)
+        #     cur_obj_mat[:3, 3] = cur_obj_pose[:3]
+        #     cur_obj_mat[:3, :3] = pytorch3d.transforms.quaternion_to_matrix(cur_obj_pose[3:7][[3, 0, 1, 2]])
+        #     new_wrist_mat = cur_obj_mat @ self.get_hand_rel_mat()
+
+        #     new_wrist_mat = cur_obj_mat @ self.get_hand_rel_mat()
+        #     self.dof_state[0:3, 0] = new_wrist_mat[:3, 3]
+        #     self.dof_state[3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:3, :3], "XYZ")
+        #     dof_indices = self.mano_indices.to(dtype=torch.int32)
+        #     self.gym.set_dof_state_tensor_indexed(self.sim,
+        #                                     gymtorch.unwrap_tensor(self.dof_state),
+        #                                     gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+            
+        #     target = self.dof_state[:, 0].clone()
+        #     self.gym.set_dof_position_target_tensor_indexed(self.sim,
+        #                                             gymtorch.unwrap_tensor(target),
+        #                                             gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        #     count+=1
+        #     if count >= 1000:
+        #         self.stage_tensor += 1
+        #         count = 0
+        #     return count
         
 
     def simulate(self):

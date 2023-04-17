@@ -333,6 +333,8 @@ while not gym.query_viewer_has_closed(viewer):
     new_wrist_mat = cur_obj_mat @ hand_rel_mat
     dof_state_tensor[0:3, 0] = new_wrist_mat[:3, 3]
     dof_state_tensor[3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:3, :3], "XYZ")
+    # print(dof_state_tensor[3:6,0])
+    # exit()
     dof_indices = torch.tensor([mano_id]).to(dtype=torch.int32)
     gym.set_dof_state_tensor_indexed(sim,
                                      gymtorch.unwrap_tensor(dof_state_tensor),
