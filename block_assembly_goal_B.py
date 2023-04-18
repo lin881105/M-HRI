@@ -296,11 +296,11 @@ goal_pose = []
 
 goal_pose_1 = gymapi.Transform()
 goal_pose_1.p = gymapi.Vec3(0, 0.0, 0.0145)
-goal_pose_1.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
+goal_pose_1.r = gymapi.Quat.from_euler_zyx(-math.pi*0.5, 0, 0)
 
 goal_pose_2 = gymapi.Transform()
 goal_pose_2.p = gymapi.Vec3(0, 0, 0.0435)
-goal_pose_2.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
+goal_pose_2.r = gymapi.Quat.from_euler_zyx(-math.pi*0.5, 0, 0)
 
 block_height = [0.0145,0.0145]
 
