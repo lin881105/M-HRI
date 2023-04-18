@@ -13,6 +13,7 @@ import scipy.io as sio
 from utils import utils
 from scipy.spatial.transform import Rotation as R
 import pytorch3d.transforms
+import quaternion
 
 # set random seed
 np.random.seed(20)
@@ -55,7 +56,7 @@ while True:
     
 print("success generate initial pos!!!")
 
-class BlockAssembly():
+class ManoBlockAssembly():
     def __init__(self):
         # initialize gym
         self.gym = gymapi.acquire_gym()
@@ -70,7 +71,13 @@ class BlockAssembly():
         self.create_sim()
         self.get_hand_rel_mat()
         # create viewer using the default camera properties
-        self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
+        use_viewer = not args.headless
+        if use_viewer:
+            self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
+            if self.viewer is None:
+                raise Exception("Failed to create viewer")
+        else:
+            self.viewer = None
 
         # Look at the first env
         cam_pos = gymapi.Vec3(1, 0, 1.5)
@@ -245,7 +252,7 @@ class BlockAssembly():
             region_pose.p.x = table_pose.p.x + region_xy[0]
             region_pose.p.y = table_pose.p.y + region_xy[1]
             region_pose.p.z = table_dims.z #+ 0.001
-            region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+            # region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
 
             region_handle = self.gym.create_actor(env_ptr, region_asset, region_pose, "target", i, 1, 1) # 001
             self.gym.set_rigid_body_color(env_ptr, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0., 0., 0.))
@@ -265,7 +272,6 @@ class BlockAssembly():
                 # euler = rot.as_euler("xyz", degrees=False)
                 euler = r2.as_euler("xyz", degrees=False)
 
-                block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
                 block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
             
                 # block_pose=utils.mat2gymapi_transform(block_pos_world[cnt])
@@ -295,7 +301,7 @@ class BlockAssembly():
             _goal_list.append(torch.stack(goal))
 
             # create mano and set properties
-            mano_handle = self.gym.create_actor(env_ptr, mano_asset, handobj_start_pose, "mano", i, 2 ** (len(self.block_list)), len(self.block_list) + 2) # 100
+            mano_handle = self.gym.create_actor(env_ptr, mano_asset, handobj_start_pose, "mano", i, 2 ** (len(self.block_list)) - 1, len(self.block_list) + 2) # 100
             mano_sim_index = self.gym.get_actor_index(env_ptr, mano_handle, gymapi.DOMAIN_SIM)
             self.mano_indices.append(mano_sim_index)
 
@@ -453,9 +459,39 @@ class BlockAssembly():
         
         return new_dof_state
     
-    def set_finger_pos(self,new_dof_state):
+        
+    def set_hand_object_pos(self):
+        curr_block_pose = self.root_state_tensor[self.block_indices[:,self.stage//6], :7].clone()
+        target_block_pose = self.goal_list[:,self.stage,:].clone()
+        
+        
 
-        self.dof_state[:,6:,0] = self.dof_state[:,6:,0] + (new_dof_state[:,6:,0] - self.dof_state[:,6:,0])*0.08
+        self.root_state_tensor[self.block_indices[:,self.stage//6], :6] += (target_block_pose[:,:6] - curr_block_pose[:,:6])*0.008
+        
+        goal_obj_indices = self.block_indices[:,self.stage//6].to(torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                gymtorch.unwrap_tensor(self.root_state_tensor),
+                                                gymtorch.unwrap_tensor(goal_obj_indices), len(goal_obj_indices))
+        
+
+        goal_pose = self.root_state_tensor[self.block_indices[:,self.stage//6],:7]
+
+        cur_obj_mat = torch.eye(4).unsqueeze(0).repeat(self.num_envs, 1, 1).to(self.device)
+        cur_obj_mat[:,:3, 3] = goal_pose[:,:3]
+        cur_obj_mat[:,:3, :3] = pytorch3d.transforms.quaternion_to_matrix(goal_pose[:, [6,3,4,5]])
+
+        new_wrist_mat = cur_obj_mat @ self.hand_rel_mat
+
+        new_dof_state = self.dof_state.clone()
+        
+        new_dof_state[:, 0:3, 0] = new_wrist_mat[:, :3, 3]
+        new_dof_state[:, 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
+        new_dof_state[:,6:,0] = self.hand_goal_pose[6:]
+        # print(self.dof_state[:, :, 0])
+
+        self.dof_state[:,0:6,0] = new_dof_state[:,0:6,0]
+        self.dof_state[:,6:,0] = self.dof_state[:,6:,0]
+        
         dof_indices = self.mano_indices.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                         gymtorch.unwrap_tensor(self.dof_state),
@@ -466,17 +502,8 @@ class BlockAssembly():
                                                 gymtorch.unwrap_tensor(target),
                                                 gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
         
-    
-        
-    def set_hand_object_pos(self):
-        curr_block_pose = self.root_state_tensor[self.block_indices[:,self.stage//6], :7]
-        target_block_pose = self.goal_list[:,self.stage,:]
 
-        self.root_state_tensor[self.block_indices[:,self.stage//6], :7] += (target_block_pose - curr_block_pose)*0.01
-        goal_obj_indices = torch.tensor(self.block_indices[:,self.stage//6]).to(torch.int32)
-        self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                gymtorch.unwrap_tensor(self.root_state_tensor),
-                                                gymtorch.unwrap_tensor(goal_obj_indices), len(goal_obj_indices))
+
         return target_block_pose
 
     def check_block_pos_reach(self,target_block_pose):
@@ -489,7 +516,7 @@ class BlockAssembly():
         
     def check_hand_pos_reach(self,new_dof_state):
         diff = torch.norm(self.dof_state[:,:6,0]-new_dof_state[:,:6,0])
-        if diff < 0.001:
+        if diff < 0.05:
             return True
         else:
             return False
@@ -500,7 +527,7 @@ class BlockAssembly():
         diff = self.dof_state - new_dof_state
         print(torch.norm(diff))
 
-        if torch.norm(diff) < 0.1:
+        if torch.norm(diff) < 0.01:
             return True
         else:
             return False
@@ -510,10 +537,8 @@ class BlockAssembly():
         set_object = False
 
 
-        if self.stage == 2 or self.stage==3 :
+        if self.stage == 2 or self.stage==3 or self.stage==7 or self.stage==8:
             set_object = True
-
-        
 
         if not set_object:
             goal_pose = self.goal_list[:,self.stage,:]
@@ -525,12 +550,13 @@ class BlockAssembly():
             target_hand_pose = cur_obj_mat @ self.hand_rel_mat
 
             new_target_dof = self.set_hand_pos(target_hand_pose)
-
-            
     
-            if self.check_hand_reach(new_target_dof):
+            if self.check_hand_pos_reach(new_target_dof):
                 self.stage+=1
+
+
         else:
+            
             target_block_pose = self.set_hand_object_pos()
             goal_pose = self.root_state_tensor[self.block_indices[:,self.stage//6],:7]
 
@@ -710,5 +736,5 @@ class BlockAssembly():
         self.gym.destroy_sim(self.sim)
 
 if __name__ == "__main__":
-    issac = BlockAssembly()
+    issac = ManoBlockAssembly()
     issac.simulate()

@@ -647,11 +647,9 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
                 placed = False
                 placed_counter = 0
                 picked_counter = 0
-    
-
-    
 
         # compute position and orientation error
+    
     if op:
         pos_action[:,7:9] = gripper_open
         op = False
