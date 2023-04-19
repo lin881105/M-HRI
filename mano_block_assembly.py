@@ -285,7 +285,7 @@ class ManoBlockAssembly():
                 tmp_pose = utils.mat2gymapi_transform(utils.gymapi_transform2mat(region_pose) @ self.goal_pose[cnt])
                 goal_place_pose = torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,tmp_pose.p.z,tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device)
                 goal_preplace_pose = torch.Tensor((tmp_pose.p.x,tmp_pose.p.y,0.5,tmp_pose.r.x,tmp_pose.r.y,tmp_pose.r.z,tmp_pose.r.w)).to(self.device)
-                # goal.append(goal_preplace_pose)
+                goal.append(goal_preplace_pose)
                 goal.append(goal_place_pose)
                 goal.append(goal_preplace_pose)
 
@@ -506,39 +506,53 @@ class ManoBlockAssembly():
 
         return target_block_pose
 
-    def check_block_pos_reach(self,target_block_pose):
+    def check_block_pos_reach(self,target_block_pose,block_threshold):
         curr_block_pose = self.root_state_tensor[self.block_indices[:,self.stage//6], :7]
         diff = torch.norm(curr_block_pose-target_block_pose)
-        if diff < 0.01:
+        if diff < block_threshold:
             return True
         else:
             return False
         
-    def check_hand_pos_reach(self,new_dof_state):
+    def check_hand_pos_reach(self,new_dof_state,threshold):
         diff = torch.norm(self.dof_state[:,:6,0]-new_dof_state[:,:6,0])
-        if diff < 0.05:
+        if diff < threshold:
             return True
         else:
             return False
+        
+    def reset_grasp_pose(self):
+        self.dof_state[:,6:,0] = self.dof_state[:,6:,0] + (0 - self.dof_state[:,6:,0])*0.005
+        
+        dof_indices = self.mano_indices.to(dtype=torch.int32)
+        self.gym.set_dof_state_tensor_indexed(self.sim,
+                                        gymtorch.unwrap_tensor(self.dof_state),
+                                        gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        
+        target = self.dof_state[:, :, 0].clone()
+        self.gym.set_dof_position_target_tensor_indexed(self.sim,
+                                                gymtorch.unwrap_tensor(target),
+                                                gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
 
 
-    def check_hand_reach(self,new_dof_state):
-
-        diff = self.dof_state - new_dof_state
-        print(torch.norm(diff))
-
-        if torch.norm(diff) < 0.01:
-            return True
-        else:
-            return False
 
     def update(self):
 
         set_object = False
 
 
-        if self.stage == 2 or self.stage==3 or self.stage==7 or self.stage==8:
+        if self.stage == 2 or self.stage==3 or self.stage==4 or  self.stage==8 or self.stage==9 or self.stage==10:
             set_object = True
+        if self.stage == 4 or self.stage==10:
+            block_threshold = 0.01
+        else:
+            block_threshold = 0.1
+        if self.stage == 1 or self.stage == 7:
+            threshold = 0.005
+        else:
+            threshold = 0.1
+        if self.stage == 5 or self.stage == 11:
+            self.reset_grasp_pose()
 
         if not set_object:
             goal_pose = self.goal_list[:,self.stage,:]
@@ -551,7 +565,7 @@ class ManoBlockAssembly():
 
             new_target_dof = self.set_hand_pos(target_hand_pose)
     
-            if self.check_hand_pos_reach(new_target_dof):
+            if self.check_hand_pos_reach(new_target_dof,threshold):
                 self.stage+=1
 
 
@@ -568,7 +582,7 @@ class ManoBlockAssembly():
 
             new_target_dof = self.set_hand_pos(target_hand_pose)
 
-            if self.check_block_pos_reach(target_block_pose):
+            if self.check_block_pos_reach(target_block_pose,block_threshold):
                 self.stage+=1
 
 
