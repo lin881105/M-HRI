@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding='utf-8'?>
+<robot name="usb_A">
+  <link name="usb_A">
+    <visual>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="px0441_2m00.obj" scale=".001 .001 .001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="px0441_2m00.obj" scale=".001 .001 .001"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <!-- Mass value from the *empty* spam can. Full spam can is 368g -->
+      <mass value="0.026"/> 
+      <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
+    </inertial>
+  </link>
+</robot>

@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<robot name="factory_rectangular_hole_8mm">
+    <link name="factory_rectangular_hole_8mm">
+        <visual>
+            <geometry>
+                <mesh filename="factory_rectangular_hole_8mm_subdiv_3x.obj" scale='3 3 2'/>
+            </geometry>
+        </visual>
+        <collision>
+            <geometry>
+                <mesh filename="factory_rectangular_hole_8mm_subdiv_3x.obj" scale='3 3 2'/>
+            </geometry>
+            <sdf resolution="256"/>
+        </collision>
+    </link>
+</robot>
