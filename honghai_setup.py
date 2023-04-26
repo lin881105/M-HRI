@@ -418,7 +418,7 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
 
     gripper_open = torch.Tensor(franka_upper_limits[7:]).to(device)
     gripper_close = torch.Tensor(franka_lower_limits[7:]).to(device)
-    delta = 0.01
+    delta = 0.05
 
     for evt in gym.query_viewer_action_events(viewer):
 

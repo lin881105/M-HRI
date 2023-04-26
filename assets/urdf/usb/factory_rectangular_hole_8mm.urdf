@@ -3,12 +3,12 @@
     <link name="factory_rectangular_hole_8mm">
         <visual>
             <geometry>
-                <mesh filename="factory_rectangular_hole_8mm_subdiv_3x.obj" scale='3 3 2'/>
+                <mesh filename="factory_rectangular_hole_8mm_subdiv_3x.obj" scale='2 2 5'/>
             </geometry>
         </visual>
         <collision>
             <geometry>
-                <mesh filename="factory_rectangular_hole_8mm_subdiv_3x.obj" scale='3 3 2'/>
+                <mesh filename="factory_rectangular_hole_8mm_subdiv_3x.obj" scale='2 2 5'/>
             </geometry>
             <sdf resolution="256"/>
         </collision>
