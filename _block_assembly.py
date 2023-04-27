@@ -161,10 +161,12 @@ class FrankaBlockAssembly():
         region_pose = gymapi.Transform()
         
         self.envs = []
-        self.block_idxs_list = []
+        self.block_idxs_list = [[] for _ in range(self.num_envs)]
         self.hand_idxs = []
         self.init_pos_list = []
         self.init_rot_list = []
+        self.block_handles_list = [ [] for _ in range(self.num_envs)]
+        self.region_pose_list = []
         
         for i in range(self.num_envs):
 
@@ -176,79 +178,67 @@ class FrankaBlockAssembly():
             table_handle = self.gym.create_actor(env, table_asset, table_pose, "table", i,0)
 
             # add region
-            # region_x = np.random.uniform(-0.1,0.1)
-            # region_y = np.random.uniform(-0.1,0.1)
-
-            region_pose.p.x = table_pose.p.x + region_xy[0]
-            region_pose.p.y = table_pose.p.y + region_xy[1]
+            region_pose.p.x = table_pose.p.x + self.region_xy[0]
+            region_pose.p.y = table_pose.p.y + self.region_xy[1]
             region_pose.p.z = table_dims.z #+ 0.001
             region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
             
-            region_pose_mat = utils.gymapi_transform2mat(region_pose)
+            # self.region_pose_mat = utils.gymapi_transform2mat(region_pose)
+            self.region_pose_list.append(region_pose)
 
             black = gymapi.Vec3(0.,0.,0.)
-            region_handle = gym.create_actor(env, region_asset, region_pose, "target", i, 1)
-            gym.set_rigid_body_color(env, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, black)
+            region_handle = self.gym.create_actor(env, region_asset, region_pose, "target", i, 1)
+            self.gym.set_rigid_body_color(env, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, black)
 
             # add box
-            block_handles = []
-            block_idxs = []
-
 
             for j, idx in enumerate(self.goal_list):
 
                 block_pose = gymapi.Transform()
-                block_pose.p.x = table_pose.p.x + rand_xy[j,0]
-                block_pose.p.y = table_pose.p.y + rand_xy[j,1]
-                block_pose.p.z = table_dims.z + block_height[j]
+                block_pose.p.x = table_pose.p.x + self.rand_xy[j,0]
+                block_pose.p.y = table_pose.p.y + self.rand_xy[j,1]
+                block_pose.p.z = table_dims.z + self.block_height[j]
 
                 r1 = R.from_euler('z', np.random.uniform(-math.pi, math.pi))
-                r2 = R.from_matrix(goal_pose[j][:3,:3])
+                r2 = R.from_matrix(self.goal_pose[j][:3,:3])
                 rot = r1 * r2
                 euler = rot.as_euler("xyz", degrees=False)
 
                 block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
                 # block_pose=utils.mat2gymapi_transform(block_pos_world[j])
-                block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i)
-                block_handles.append(block_handle)
-
-
-                # block_pose = utils.mat2gymapi_transform(utils.gymapi_transform2mat(region_pose)@goal_pose[j])
-                # block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i+1)
-                # block_handles.append(block_handle)
+                block_handle = self.gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i)
+                self.block_handles_list[i].append(block_handle)
 
                 color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
-                gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
-                block_idx = gym.get_actor_rigid_body_index(env, block_handle, 0, gymapi.DOMAIN_SIM)
-                block_idxs.append(block_idx)
+                self.gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+                block_idx = self.gym.get_actor_rigid_body_index(env, block_handle, 0, gymapi.DOMAIN_SIM)
+                self.block_idxs_list[i].append(block_idx)
 
-                block_idxs_list.append(block_idxs)
+            # # get global index of box in rigid body state tensor
+            # box_idx = gym.get_actor_rigid_body_index(env, box_handle, 0, gymapi.DOMAIN_SIM)
+            # block_idxs.append(box_idx)
 
-                # # get global index of box in rigid body state tensor
-                # box_idx = gym.get_actor_rigid_body_index(env, box_handle, 0, gymapi.DOMAIN_SIM)
-                # block_idxs.append(box_idx)
+            # add franka
+            franka_handle = self.gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2)
 
-                # add franka
-                franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2)
+            # set dof properties
+            self.gym.set_actor_dof_properties(env, franka_handle, franka_dof_props)
 
-                # set dof properties
-                gym.set_actor_dof_properties(env, franka_handle, franka_dof_props)
+            # set initial dof states
+            self.gym.set_actor_dof_states(env, franka_handle, default_dof_state, gymapi.STATE_ALL)
 
-                # set initial dof states
-                gym.set_actor_dof_states(env, franka_handle, default_dof_state, gymapi.STATE_ALL)
+            # set initial position targets
+            self.gym.set_actor_dof_position_targets(env, franka_handle, default_dof_pos)
 
-                # set initial position targets
-                gym.set_actor_dof_position_targets(env, franka_handle, default_dof_pos)
+            # get inital hand pose
+            hand_handle = self.gym.find_actor_rigid_body_handle(env, franka_handle, "panda_hand")
+            hand_pose = self.gym.get_rigid_transform(env, hand_handle)
+            self.init_pos_list.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z])
+            self.init_rot_list.append([hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w])
 
-                # get inital hand pose
-                hand_handle = gym.find_actor_rigid_body_handle(env, franka_handle, "panda_hand")
-                hand_pose = gym.get_rigid_transform(env, hand_handle)
-                init_pos_list.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z])
-                init_rot_list.append([hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w])
-
-                # get global index of hand in rigid body state tensor
-                hand_idx = gym.find_actor_rigid_body_index(env, franka_handle, "panda_hand", gymapi.DOMAIN_SIM)
-                hand_idxs.append(hand_idx)
+            # get global index of hand in rigid body state tensor
+            hand_idx = self.gym.find_actor_rigid_body_index(env, franka_handle, "panda_hand", gymapi.DOMAIN_SIM)
+            self.hand_idxs.append(hand_idx)
                     
         
     
@@ -281,20 +271,71 @@ class FrankaBlockAssembly():
     
     def generate_pose(self):
 
-        region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], 2)
+        self.region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], 2)
 
         while True:
-            rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (3, 2))
+            self.rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (3, 2))
             
-            if self.check_in_region(region_xy, rand_xy) or self.check_contact_block(rand_xy):
+            if self.check_in_region(self.region_xy, self.rand_xy) or self.check_contact_block(self.rand_xy):
                 continue
             else:
                 break
             
         print("success generate initial pos!!!")
                 
+    def get_pp_pose_tensor(self):
         
         
+        self.goal_pick_pos_list = [[] for _ in range(self.num_envs)]
+        self.goal_pick_rot_list = [[] for _ in range(self.num_envs)]
+        self.goal_prepick_pos_list = [[] for _ in range(self.num_envs)]
+        self.goal_place_pos_list = [[] for _ in range(self.num_envs)]
+        self.goal_place_rot_list = [[] for _ in range(self.num_envs)]
+        self.goal_preplace_pos_list = [[] for _ in range(self.num_envs)]
+        
+        for i in range(self.num_envs):
+            for j in range(self.goal_list.shape[0]):
+                body_states = self.gym.get_actor_rigid_body_states(self.envs[i], self.block_handles_list[i][j], gymapi.STATE_ALL)
+
+                tmp_mat = np.eye(4)
+                tmp_mat[:3, :3] = R.from_quat(np.array([body_states["pose"]["r"]["x"],
+                                                        body_states["pose"]["r"]["y"],
+                                                        body_states["pose"]["r"]["z"],
+                                                        body_states["pose"]["r"]["w"]]).reshape(-1)).as_matrix()
+                
+                tmp_mat[:3, 3] = np.array([body_states["pose"]["p"]["x"], body_states["pose"]["p"]["y"], body_states["pose"]["p"]["z"]]).reshape(-1)
+
+                place_mat = utils.gymapi_transform2mat(self.region_pose_list[i]) @ self.rel_place_pos[i]
+                pick_mat = tmp_mat @ self.rel_pick_pos[i]
+                
+                goal_pick_pose = utils.mat2gymapi_transform(pick_mat)
+                goal_place_pose = utils.mat2gymapi_transform(place_mat)
+
+
+                goal_prepick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,0.7)).reshape(1, 3).to(device)
+                goal_pick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,goal_pick_pose.p.z)).reshape(1, 3).to(device)
+                goal_pick_rot = torch.Tensor((goal_pick_pose.r.x,goal_pick_pose.r.y,goal_pick_pose.r.z,goal_pick_pose.r.w)).reshape(1, 4).to(device)
+
+                goal_preplace_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,0.7)).reshape(1, 3).to(device)
+                goal_place_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,goal_place_pose.p.z)).reshape(1, 3).to(device)
+                goal_place_rot = torch.Tensor((goal_place_pose.r.x,goal_place_pose.r.y,goal_place_pose.r.z,goal_place_pose.r.w)).reshape(1, 4).to(device)
+
+                self.goal_pick_pos_list[i].append(goal_pick_pos)
+                self.goal_pick_rot_list[i].append(goal_pick_rot)
+                self.goal_prepick_pos_list[i].append(goal_prepick_pos)
+                self.goal_place_pos_list[i].append(goal_place_pos)
+                self.goal_place_rot_list[i].append(goal_place_rot)
+                self.goal_preplace_pos_list[i].append(goal_preplace_pos)
+                
+                
+                
+            
+
+                
+                
+                
+        
+            
                 
             
 
