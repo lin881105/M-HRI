@@ -35,7 +35,21 @@ class FrankaBlockAssembly():
         
         self.asset_root = "assets"
         
+        
         # create simulator
+        self.create_sim()
+
+        self.load_goal_data()
+
+        self.get_pp_pose_tensor()
+
+        self._create_envs()
+
+        self.create_camera()
+
+        self.stage = 0
+
+
     
     def create_sim(self):
         # set torch device
@@ -68,11 +82,11 @@ class FrankaBlockAssembly():
         # create viewer
         use_viewer = not args.headless
         if use_viewer:
-            viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
-            if viewer is None:
+            self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
+            if self.viewer is None:
                 raise Exception("Failed to create viewer")
         else:
-            viewer = None
+            self.viewer = None
     
     def _create_envs(self):
         
@@ -144,10 +158,10 @@ class FrankaBlockAssembly():
         franka_hand_index = franka_link_dict["panda_hand"]
 
         # configure env grid
-        num_per_row = int(math.sqrt(self.num_envs))
+        self.num_per_row = int(math.sqrt(self.num_envs))
         spacing = 1.0
-        env_lower = gymapi.Vec3(-spacing, -spacing, 0.0)
-        env_upper = gymapi.Vec3(spacing, spacing, spacing)
+        self.env_lower = gymapi.Vec3(-spacing, -spacing, 0.0)
+        self.env_upper = gymapi.Vec3(spacing, spacing, spacing)
         
         
         print("Creating %d environments" % self.num_envs)
@@ -171,7 +185,7 @@ class FrankaBlockAssembly():
         for i in range(self.num_envs):
 
             # create env
-            env = self.gym.create_env(self.sim, env_lower, env_upper, num_per_row)
+            env = self.gym.create_env(self.sim, self.env_lower, self.env_upper, self.num_per_row)
             self.envs.append(env)
 
             # add table
@@ -239,8 +253,34 @@ class FrankaBlockAssembly():
             # get global index of hand in rigid body state tensor
             hand_idx = self.gym.find_actor_rigid_body_index(env, franka_handle, "panda_hand", gymapi.DOMAIN_SIM)
             self.hand_idxs.append(hand_idx)
+
+
+        # create observation buffer
+
+        # get jacobian tensor
+        # for fixed-base franka, tensor has shape (num envs, 10, 6, 9)
+        _jacobian = self.gym.acquire_jacobian_tensor(self.sim, "franka")
+        jacobian = gymtorch.wrap_tensor(_jacobian)
+
+        # jacobian entries corresponding to franka hand
+        self.j_eef = jacobian[:, franka_hand_index - 1, :, :7]
                     
-        
+        # get rigid body state tensor
+        _rb_states = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        self.rb_states = gymtorch.wrap_tensor(_rb_states)
+
+        # get dof state tensor
+        _dof_states = self.gym.acquire_dof_state_tensor(self.sim)
+        dof_states = gymtorch.wrap_tensor(_dof_states)
+        self.dof_pos = dof_states[:, 0].view(self.num_envs, 9, 1)
+        self.dof_vel = dof_states[:, 1].view(self.num_envs, 9, 1)
+
+        # Create a tensor noting whether the hand should return to the initial position
+        hand_restart = torch.full([self.num_envs], False, dtype=torch.bool).to(self.device)
+
+        # Set action tensors
+        pos_action = torch.zeros_like(self.dof_pos).squeeze(-1)
+
     
     
     def load_goal_data(self):
@@ -312,13 +352,13 @@ class FrankaBlockAssembly():
                 goal_place_pose = utils.mat2gymapi_transform(place_mat)
 
 
-                goal_prepick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,0.7)).reshape(1, 3).to(device)
-                goal_pick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,goal_pick_pose.p.z)).reshape(1, 3).to(device)
-                goal_pick_rot = torch.Tensor((goal_pick_pose.r.x,goal_pick_pose.r.y,goal_pick_pose.r.z,goal_pick_pose.r.w)).reshape(1, 4).to(device)
+                goal_prepick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,0.7)).reshape(1, 3).to(self.device)
+                goal_pick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,goal_pick_pose.p.z)).reshape(1, 3).to(self.device)
+                goal_pick_rot = torch.Tensor((goal_pick_pose.r.x,goal_pick_pose.r.y,goal_pick_pose.r.z,goal_pick_pose.r.w)).reshape(1, 4).to(self.device)
 
-                goal_preplace_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,0.7)).reshape(1, 3).to(device)
-                goal_place_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,goal_place_pose.p.z)).reshape(1, 3).to(device)
-                goal_place_rot = torch.Tensor((goal_place_pose.r.x,goal_place_pose.r.y,goal_place_pose.r.z,goal_place_pose.r.w)).reshape(1, 4).to(device)
+                goal_preplace_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,0.7)).reshape(1, 3).to(self.device)
+                goal_place_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,goal_place_pose.p.z)).reshape(1, 3).to(self.device)
+                goal_place_rot = torch.Tensor((goal_place_pose.r.x,goal_place_pose.r.y,goal_place_pose.r.z,goal_place_pose.r.w)).reshape(1, 4).to(self.device)
 
                 self.goal_pick_pos_list[i].append(goal_pick_pos)
                 self.goal_pick_rot_list[i].append(goal_pick_rot)
@@ -326,25 +366,47 @@ class FrankaBlockAssembly():
                 self.goal_place_pos_list[i].append(goal_place_pos)
                 self.goal_place_rot_list[i].append(goal_place_rot)
                 self.goal_preplace_pos_list[i].append(goal_preplace_pos)
-                
-                
-                
-            
 
-                
-                
-                
-        
-            
-                
-            
+    def create_camera(self):
+        # point camera at middle env
+        cam_pos = gymapi.Vec3(4, 3, 2)
+        cam_target = gymapi.Vec3(-4, -3, 0)
 
+        middle_env = self.envs[self.num_envs // 2 + self.num_per_row // 2]
+        self.gym.viewer_camera_look_at(self.viewer, middle_env, cam_pos, cam_target)
+
+        camera_properties = gymapi.CameraProperties()
+        camera_properties.width = 640
+        camera_properties.height = 480
+
+        for i in range(self.envs):
+
+            # Set a fixed position and look-target for the first camera
+            # position and target location are in the coordinate frame of the environment
+            camera_handle = self.gym.create_camera_sensor(self.envs[i], camera_properties)
+            camera_position = gymapi.Vec3(1, 1, 1.0)
+            camera_target = gymapi.Vec3(0, 0, 0)
+            self.gym.set_camera_location(camera_handle, self.envs[i], camera_position, camera_target)
+                
+    def quat_axis(q, axis=0):
+        basis_vec = torch.zeros(q.shape[0], 3, device=q.device)
+        basis_vec[:, axis] = 1
+        return quat_rotate(q, basis_vec)
+
+
+    def orientation_error(desired, current):
+        cc = quat_conjugate(current)
+        q_r = quat_mul(desired, cc)
+        return q_r[:, 0:3] * torch.sign(q_r[:, 3]).unsqueeze(-1)
+
+
+    def control_ik(self, dpose):
+        # solve damped least squares
+        j_eef_T = torch.transpose(self.j_eef, 1, 2)
+        lmbda = torch.eye(6, device=self.device) * (self.damping ** 2)
+        u = (j_eef_T @ torch.inverse(self.j_eef @ j_eef_T + lmbda) @ dpose).view(self.num_envs, 7)
+        return u
             
-    
+    def simulate(self):
 
-        
-        
-        
-
-        
-        
+        pass

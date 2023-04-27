@@ -478,9 +478,9 @@ jacobian = gymtorch.wrap_tensor(_jacobian)
 j_eef = jacobian[:, franka_hand_index - 1, :, :7]
 
 # get mass matrix tensor
-_massmatrix = gym.acquire_mass_matrix_tensor(sim, "franka")
-mm = gymtorch.wrap_tensor(_massmatrix)
-mm = mm[:, :7, :7]          # only need elements corresponding to the franka arm
+# _massmatrix = gym.acquire_mass_matrix_tensor(sim, "franka")
+# mm = gymtorch.wrap_tensor(_massmatrix)
+# mm = mm[:, :7, :7]          # only need elements corresponding to the franka arm
 
 # get rigid body state tensor
 _rb_states = gym.acquire_rigid_body_state_tensor(sim)
