@@ -25,6 +25,8 @@ import random
 import time
 from utils import utils
 import scipy.io as sio
+import data
+
 
 def quat_axis(q, axis=0):
     basis_vec = torch.zeros(q.shape[0], 3, device=q.device)
@@ -79,7 +81,16 @@ def control_osc(dpose):
     u += (torch.eye(7, device=device).unsqueeze(0) - torch.transpose(j_eef, 1, 2) @ j_eef_inv) @ u_null
     return u.squeeze(-1)
 
-
+def create_block_actor(gym,env,goal_list,goal_pose_list,i):
+    block_indices = []
+    for j, idx in enumerate(goal_list):
+        block_pose = utils.multiply_gymapi_transform(region_pose, utils.mat2gymapi_transform(goal_pose_list[j]))
+        block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i)
+        color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+        gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+        block_idx = gym.get_actor_index(env, block_handle,gymapi.DOMAIN_SIM)
+        block_indices.append(block_idx)
+    return block_indices
 
 
 # set random seed
@@ -97,6 +108,8 @@ custom_parameters = [
     {"name": "--controller", "type": str, "default": "ik", "help": "Controller to use for Franka. Options are {ik, osc}"},
     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
     {"name": "--headless", "action": "store_true", "help": ""},
+    {"name": "--save", "action": "store_true", "help": ""},
+    {"name": "--goal", "type": str, "default":'1',"help": ""},
 ]
 args = gymutil.parse_arguments(
     description="Franka Jacobian Inverse Kinematics (IK) + Operational Space Control (OSC) Example",
@@ -109,6 +122,7 @@ assert controller in {"ik", "osc"}, f"Invalid controller specified -- options ar
 
 # set torch device
 device = args.sim_device if args.use_gpu_pipeline else 'cpu'
+
 
 # configure sim
 sim_params = gymapi.SimParams()
@@ -185,6 +199,7 @@ region_asset = gym.create_box(sim, region_dims.x,region_dims.y, region_dims.z, a
 block_asset_list = []
 asset_options = gymapi.AssetOptions()
 asset_options.fix_base_link = True
+# asset_options.flip_visual_attachments = True
 block_type = ['A.urdf', 'B.urdf', 'C.urdf', 'D.urdf', 'E.urdf']
 for t in block_type:
     block_asset_list.append(gym.load_asset(sim, asset_root, 'urdf/block_assembly/block_' + t, asset_options))
@@ -271,14 +286,15 @@ plane_params = gymapi.PlaneParams()
 plane_params.normal = gymapi.Vec3(0, 0, 1)
 gym.add_ground(sim, plane_params)
 
-
+i=0
+# create env
 env = gym.create_env(sim, env_lower, env_upper, num_per_row)
 envs.append(env)
 
 # add table
-table_handle = gym.create_actor(env, table_asset, table_pose, "table", 0, 0)
+table_handle = gym.create_actor(env, table_asset, table_pose, "table", i, 0)
 
-ball_handle = gym.create_actor(env, sphere_asset, initial_pose, "ball", 0+1)
+ball_handle = gym.create_actor(env, sphere_asset, initial_pose, "ball", i+1)
 
 # add region
 region_pose.p.x = table_pose.p.x + np.random.uniform(-0.2, 0.1)
@@ -288,58 +304,58 @@ region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.unif
 
 # add target region
 black = gymapi.Vec3(0.,0.,0.)
-region_handle = gym.create_actor(env, region_asset, region_pose, "target_reginon", 0)
+region_handle = gym.create_actor(env, region_asset, region_pose, "target_reginon", i)
 gym.set_rigid_body_color(env, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, black)
 
-goal = [3,3]
-goal_pose = []
 
-goal_pose_1 = gymapi.Transform()
-goal_pose_1.p = gymapi.Vec3(0, 0.0, 0.0145)
-goal_pose_1.r = gymapi.Quat.from_euler_zyx(-np.pi*2.5,0,  0)
+#############################################################################################################
 
-print(goal_pose_1.r.x,goal_pose_1.r.y,goal_pose_1.r.z,goal_pose_1.r.w)
+task = data.names[args.goal]
 
-goal_pose_2 = gymapi.Transform()
-goal_pose_2.p = gymapi.Vec3(0, 0, 0.0435)
-goal_pose_2.r = gymapi.Quat.from_euler_zyx(-np.pi*2.5,0,  0)
+goal = task.goal
+goal_pose = task.goal_pose
+block_height = task.block_height
 
-print(goal_pose_2.r.x,goal_pose_2.r.y,goal_pose_2.r.z,goal_pose_2.r.w)
+# goal_pose_1 = gymapi.Transform()
+# goal_pose_1.p = gymapi.Vec3(0, 0.0255, 0.03)
 
-block_height = [0.0145,0.0145]
+# goal_pose_1.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
+
+# goal_pose_2 = gymapi.Transform()
+# goal_pose_2.p = gymapi.Vec3(0, -0.0255, 0.03)
+# goal_pose_2.r = gymapi.Quat.from_euler_zyx(math.pi*0.5, 0, 0)
+
+# goal_pose_3 = gymapi.Transform()
+# goal_pose_3.p = gymapi.Vec3(0, 0, 0.0745)
+# goal_pose_3.r = gymapi.Quat.from_euler_zyx(math.pi*0.5,0,math.pi*0.5)
+
+# block_height = [0.03,0.03,0.0145]
 
 
 
-goal_pose.append(utils.gymapi_transform2mat(goal_pose_1))
-goal_pose.append(utils.gymapi_transform2mat(goal_pose_2))
+# goal_pose.append(utils.gymapi_transform2mat(goal_pose_1))
+# goal_pose.append(utils.gymapi_transform2mat(goal_pose_2))
+# goal_pose.append(utils.gymapi_transform2mat(goal_pose_3))
+
+##############################################################################################################
 
 
-block_list = []
-block_pose_world = []
+block_indices = to_torch(create_block_actor(gym,env,goal,goal_pose,i),dtype=torch.long,device = device)
+# block_list = []
+# block_pose_world = []
 
-for j, idx in enumerate(goal):
-    block_pose = utils.multiply_gymapi_transform(region_pose, utils.mat2gymapi_transform(goal_pose[j]))
-    block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], 0)
-    color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
-    gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+# for j, idx in enumerate(goal):
+#     block_pose = utils.multiply_gymapi_transform(region_pose, utils.mat2gymapi_transform(goal_pose[j]))
+#     block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i)
+#     color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+#     gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
-    block_pose_world.append(block_pose)
-    block_list.append(block_handle)
-
-# for j in len(goal_A):
-
-#     body_states = gym.get_actor_rigid_body_states(env, block_list[j], gymapi.STATE_ALL)
-
-#     tmp_mat = np.eye(4)
-#     tmp_mat[:3, :3] = R.from_quat(np.array([body_states["pose"]["r"]["x"],
-#                                             body_states["pose"]["r"]["y"],
-#                                             body_states["pose"]["r"]["z"],
-#                                             body_states["pose"]["r"]["w"]]).reshape(-1)).as_matrix()
-#     tmp_mat[:3, 3] = np.array([body_states["pose"]["p"]["x"], body_states["pose"]["p"]["y"], body_states["pose"]["p"]["z"]]).reshape(-1)
+#     block_pose_world.append(block_pose)
+#     block_list.append(block_handle)
 
         
 # add franka
-franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", 0, 2)
+franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2)
 
 # set dof properties
 gym.set_actor_dof_properties(env, franka_handle, franka_dof_props)
@@ -402,6 +418,9 @@ mm = mm[:, :7, :7]          # only need elements corresponding to the franka arm
 _rb_states = gym.acquire_rigid_body_state_tensor(sim)
 rb_states = gymtorch.wrap_tensor(_rb_states)
 
+actor_root_state_tensor = gym.acquire_actor_root_state_tensor(sim)
+root_state_tensor = gymtorch.wrap_tensor(actor_root_state_tensor).view(-1, 13)
+
 # get dof state tensor
 _dof_states = gym.acquire_dof_state_tensor(sim)
 dof_states = gymtorch.wrap_tensor(_dof_states)
@@ -415,27 +434,22 @@ hand_restart = torch.full([num_envs], False, dtype=torch.bool).to(device)
 pos_action = torch.zeros_like(dof_pos).squeeze(-1)
 effort_action = torch.zeros_like(pos_action)
 
-
-action = ''
-op = False
-
-grasp_pose = []
-grasp_rot = []
-
 camera_properties = gymapi.CameraProperties()
 camera_properties.width = 640
 camera_properties.height = 480
 
-camera_handle = gym.create_camera_sensor(envs[0], camera_properties)
+camera_handle = gym.create_camera_sensor(envs[i], camera_properties)
 camera_position = gymapi.Vec3(1, 0.5, 1.0)
 camera_target = gymapi.Vec3(0, 0, 0)
-gym.set_camera_location(camera_handle, envs[0], camera_position, camera_target)
+gym.set_camera_location(camera_handle, envs[i], camera_position, camera_target)
 
 
-img = []
-frame_count=0
 
-
+action = ''
+op = False
+idx = len(goal)-1
+grasp_pos = []
+grasp_rot = []
 # simulation loop
 while viewer is None or not gym.query_viewer_has_closed(viewer):
 
@@ -445,13 +459,15 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
 
     # refresh tensors
     gym.refresh_rigid_body_state_tensor(sim)
+    gym.refresh_actor_root_state_tensor(sim)
     gym.refresh_dof_state_tensor(sim)
     gym.refresh_jacobian_tensors(sim)
     gym.refresh_mass_matrix_tensors(sim)
 
+    
+
     hand_pos = rb_states[hand_idxs, :3]
     hand_rot = rb_states[hand_idxs, 3:7]
-    hand_vel = rb_states[hand_idxs, 7:]
 
     gripper_open = torch.Tensor(franka_upper_limits[7:]).to(device)
     gripper_close = torch.Tensor(franka_lower_limits[7:]).to(device)
@@ -470,10 +486,16 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
                 action = ''
             if action == "save":
                 dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
-                print(hand_pos,hand_rot) 
-                # grasp_pose.append(hand_pos)
-                # grasp_rot.append(hand_rot)
-
+                print(hand_pos)
+                print(hand_rot)
+                grasp_pos.append(hand_pos)
+                grasp_rot.append(hand_rot)
+                root_state_tensor[block_indices[idx], 2] = 5
+                goal_obj_indices = torch.tensor([block_indices[idx]], dtype=torch.int32, device=device)
+                gym.set_actor_root_state_tensor_indexed(sim,
+                                                        gymtorch.unwrap_tensor(root_state_tensor),
+                                                        gymtorch.unwrap_tensor(goal_obj_indices), len(goal_obj_indices))
+                idx-=1
         else :
             action = ''
 
@@ -499,7 +521,6 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
         dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[-10.],[0.]]]).to(device) * delta
     elif action == "gripper_close":
         dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
-        print(pos_action[:,7:9])
         if torch.all(pos_action[:,7:9] == gripper_close):
             pos_action[:,7:9] = gripper_open
         elif torch.all(pos_action[:,7:9] == gripper_open):
@@ -510,18 +531,9 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
         dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
 
 
-    if controller == "ik":
-        pos_action[:, :7] = dof_pos.squeeze(-1)[:, :7] + control_ik(dpose)
-    else:       # osc
-        effort_action[:, :7] = control_osc(dpose)
-
-    # tmp_action = torch.cat((pos_action,rope_pos.squeeze(-1)),1)
-    # Deploy actions
+    pos_action[:, :7] = dof_pos.squeeze(-1)[:, :7] + control_ik(dpose)
     gym.set_dof_position_target_tensor(sim, gymtorch.unwrap_tensor(pos_action))
-    # gym.set_dof_actuation_force_tensor(sim, gymtorch.unwrap_tensor(effort_action))
-    rgb_filename = "output_grasp/frame%d.png" % (frame_count)
-    frame_count += 1
-    gym.write_camera_image_to_file(sim, envs[0], camera_handle, gymapi.IMAGE_COLOR, rgb_filename)
+
 
 
     # update viewer
@@ -535,47 +547,33 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
 gym.destroy_viewer(viewer)
 gym.destroy_sim(sim)
 
-rel_place_pos = []
-rel_pick_pos = []
 
-grasp_pose.append(torch.tensor([[0.3955, 0.2798, 0.5748]], device='cuda:0') )
-grasp_rot.append(torch.tensor([[0.9976, 0.0232, 0.0471, 0.0452]], device='cuda:0'))
-grasp_pose.append(torch.tensor([[0.4242, 0.2802, 0.5518]], device='cuda:0') )
-grasp_rot.append(torch.tensor([[ 0.9961, -0.0196,  0.0617,  0.0596]], device='cuda:0'))
-grasp_pose.append(torch.tensor([[0.3711, 0.2842, 0.5412]], device='cuda:0'))
-grasp_rot.append(torch.tensor([[ 0.9964, -0.0241,  0.0627,  0.0516]], device='cuda:0'))
+rel_pick_pos=[]
+rel_place_pos=[]
+
+i = len(goal)-1
 
 
-
-
-
-i = len(goal_pose)
-
-block_world_pos = []
-
-for pos, quat in zip(grasp_pose, grasp_rot):
+for pos, quat in zip(grasp_pos, grasp_rot):
     rel_pos = np.linalg.inv(utils.gymapi_transform2mat(region_pose)) @ utils.tensor_6d_pose2mat(pos, quat)
-    rel_place_pos.insert(0, rel_pos)
-    # block_world_pos.insert(0,utils.gymapi_transform2mat(region_pose) @ goal_A_pose[i-1])
-    # print(np.linalg.inv(utils.gymapi_transform2mat(region_pose) @ goal_A_pose[i-1]) @ utils.tensor_6d_pose2mat(pos, quat))
-    # rel_pick_pos.insert(0, np.linalg.inv(utils.gymapi_transform2mat(region_pose) @ goal_A_pose[i-1]) @ utils.tensor_6d_pose2mat(pos, quat))
-    rel_pick_pos.insert(0, np.linalg.inv(goal_pose[i-1]) @ rel_pos)
+    rel_place_pos.insert(0,rel_pos)
+    # block_world_pos.insert(0,utils.gymapi_transform2mat(region_pose) @ goal_pose[i-1])
+    # print(np.linalg.inv(utils.gymapi_transform2mat(region_pose) @ goal_pose[i-1]) @ utils.tensor_6d_pose2mat(pos, quat))
+    # rel_pick_pos.insert(0, np.linalg.inv(utils.gymapi_transform2mat(region_pose) @ goal_pose[i-1]) @ utils.tensor_6d_pose2mat(pos, quat))
+    rel_pick_pos.insert(0,np.linalg.inv(goal_pose[i]) @ rel_pos)
     
     i-=1
 
 
-
-
-
-
-goal_A_data = {
-    "block_list": goal, 
-    "block_pose": goal_pose,
-    "pick_pose": rel_pick_pos,
-    "place_pose": rel_place_pos,
-    "block_world": block_world_pos,
-    "block_height": block_height,
+goal_data = {
+"block_list": goal, 
+"block_pose": goal_pose,
+"pick_pose": rel_pick_pos,
+"place_pose": rel_place_pos,
+"block_height": block_height,
 }
 
-sio.savemat("goal/block_assembly/goal_B_data.mat",goal_A_data)
+if args.save:
+    sio.savemat(f"goal/block_assembly/data/goal_{args.goal}_data.mat",goal_data)
+    print("Pose saved !!!")
 

@@ -217,14 +217,14 @@ class ManoBlockAssembly():
         region_pose = gymapi.Transform()
 
         # read block goal pos
-        mat_file = "goal/block_assembly/goal_B_data.mat"
+        mat_file = "goal/block_assembly/data/goal_2_data.mat"
         mat_dict = sio.loadmat(mat_file)
 
         self.block_list = mat_dict["block_list"][0]
         self.goal_pose = mat_dict["block_pose"]
         # self.rel_pick_pos = mat_dict["pick_pose"]
         # self.rel_place_pos = mat_dict["place_pose"]
-        self.block_pos_world = mat_dict["block_world"]
+        # self.block_pos_world = mat_dict["block_world"]
         self.block_height = mat_dict["block_height"]
 
         # cache some common handles for later use
