@@ -25,7 +25,6 @@ class Goal_2():
 
         goal_rot_1 = torch.Tensor((-2.5*np.pi,0,  0)).to(device=self.device)
         goal_rot_1 = pytorch3d.transforms.euler_angles_to_matrix(goal_rot_1,"XYZ").to(device=self.device)
-        # goal_rot_1 = torch.round(torch.tensor(goal_rot_1), decimals=3)
 
         goal_pose_1 = torch.eye(4)
         goal_pose_1[:3,:3] = goal_rot_1
@@ -38,7 +37,6 @@ class Goal_2():
 
         goal_rot_2 = torch.Tensor((-2.5*np.pi,0,  0)).to(device=self.device)
         goal_rot_2 = pytorch3d.transforms.euler_angles_to_matrix(goal_rot_2,"XYZ").to(device=self.device)
-        # goal_rot_2 = torch.round(torch.tensor(goal_rot_2), decimals=3)
         goal_pose_2 = torch.eye(4)
         goal_pose_2[:3,:3] = goal_rot_2
         goal_pose_2[:3, 3] = goal_pos_2
