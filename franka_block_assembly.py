@@ -2,6 +2,8 @@ from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
 from isaacgym.torch_utils import *
+import os
+import datetime
 
 import math
 import numpy as np
@@ -11,11 +13,14 @@ import time
 import scipy.io as sio
 from utils import utils
 from scipy.spatial.transform import Rotation as R
+import shutil
+
 
 custom_parameters = [
     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
     {"name": "--headless", "action": "store_true", "help": "Run headless"},
     {"name": "--goal", "type": str, "default":'1',"help": ""},
+    {"name": "--save", "action": "store_true"},
 ]
 args = gymutil.parse_arguments(
     description="Franka block assembly demonstration",
@@ -154,7 +159,7 @@ class FrankaBlockAssembly():
         default_dof_state["pos"] = default_dof_pos
 
         # send to torch
-        default_dof_pos_tensor = to_torch(default_dof_pos, device=self.device)
+        # default_dof_pos_tensor = to_torch(default_dof_pos, device=self.device)
 
         # get link index of panda hand, which we will use as end effector
         franka_link_dict = self.gym.get_asset_rigid_body_dict(franka_asset)
@@ -184,6 +189,7 @@ class FrankaBlockAssembly():
         self.init_rot_list = []
         self.block_handles_list = [ [] for _ in range(self.num_envs)]
         self.region_pose_list = []
+        self.hand_handle_list = []
         
         for i in range(self.num_envs):
 
@@ -252,6 +258,7 @@ class FrankaBlockAssembly():
             hand_pose = self.gym.get_rigid_transform(env, hand_handle)
             self.init_pos_list.append([hand_pose.p.x, hand_pose.p.y, hand_pose.p.z])
             self.init_rot_list.append([hand_pose.r.x, hand_pose.r.y, hand_pose.r.z, hand_pose.r.w])
+            self.hand_handle_list.append(hand_handle)
 
             # get global index of hand in rigid body state tensor
             hand_idx = self.gym.find_actor_rigid_body_index(env, franka_handle, "panda_hand", gymapi.DOMAIN_SIM)
@@ -279,7 +286,7 @@ class FrankaBlockAssembly():
         self.dof_vel = dof_states[:, 1].view(self.num_envs, 9, 1)
 
         # Create a tensor noting whether the hand should return to the initial position
-        hand_restart = torch.full([self.num_envs], False, dtype=torch.bool).to(self.device)
+        # hand_restart = torch.full([self.num_envs], False, dtype=torch.bool).to(self.device)
 
         # Set action tensors
         self.pos_action = torch.zeros_like(self.dof_pos).squeeze(-1)
@@ -295,33 +302,63 @@ class FrankaBlockAssembly():
         self.block_height = mat_dict["block_height"]
         
     def check_in_region(self, region_xy, rand_xy):
-        for j in range(rand_xy.shape[0]):
-            for i in range(rand_xy.shape[1]):
-                if np.linalg.norm(region_xy[j] - rand_xy[j][i]) < 0.08:
-                    return True
+        # for j in range(rand_xy.shape[0]):
+        #     for i in range(rand_xy.shape[1]):
+        #         if np.linalg.norm(region_xy[j] - rand_xy[j][i]) < 0.08:
+        #             return True
+        reset_idx = torch.where(torch.norm(region_xy.unsqueeze(1).repeat(1,len(self.goal_list),1) - rand_xy,dim=2)<0.08,True,False)
+        # reset_idx = torch.logical_not(_diff).to(self.device)
+   
+        # reset_idx = torch.logical_not(_diff).to(self.device)
         
-        return False
+        return reset_idx
 
     def check_contact_block(self,rand_xy):
-        for k in range(rand_xy.shape[0]):
-            for i in range(rand_xy.shape[1]):
-                for j in range(i+1, rand_xy.shape[2]):
-                    if np.linalg.norm(rand_xy[k][i] - rand_xy[k][j]) < 0.08:
-                        return True
-                
-        return False
+        # for k in range(rand_xy.shape[0]):
+        #     for i in range(rand_xy.shape[1]):
+        #         for j in range(i+1, rand_xy.shape[2]):
+        #             if np.linalg.norm(rand_xy[k][i] - rand_xy[k][j]) < 0.08:
+        #                 return True
+        _diff=[]
+        for i in range(len(self.goal_list)):
+            for j in range(i+1, len(self.goal_list)):
+                _diff.append(torch.norm(rand_xy[:,i,:] - rand_xy[:,i+1,:],dim=1).unsqueeze(1).to(self.device))
+
+        # for i in range(len(self.goal_list)):
+        #     _tmp = rand_xy[:,i,:].repeat(1,3,1)
+
+            
+        _diff = torch.cat(_diff,dim=1).to(self.device)
+        
+        reset_idx = torch.where(_diff<0.08,True,False)
+                        
+        return reset_idx
     
     def generate_pose(self):
 
-        self.region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], (self.num_envs,2))
+        # self.region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], (self.num_envs,2))
+        self.region_xy = torch.FloatTensor(self.num_envs,2).uniform_(-0.085,0.085).to(self.device)
+        self.rand_xy = torch.stack((torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.13,0.13),
+                                    torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.23,0.23)),dim=2).to(self.device)
 
         while True:
-            self.rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (self.num_envs,len(self.goal_list), 2))
-            
-            if self.check_in_region(self.region_xy, self.rand_xy) or self.check_contact_block(self.rand_xy):
-                continue
-            else:
+            # self.rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (self.num_envs,len(self.goal_list), 2))
+            region_reset_idx = self.check_in_region(self.region_xy, self.rand_xy)
+            block_reset_idx = self.check_contact_block(self.rand_xy)
+            # print(region_reset_idx)
+            # print(block_reset_idx)
+
+            reset_idx = torch.logical_or(region_reset_idx,block_reset_idx).to(self.device)
+
+            if torch.all(torch.logical_not(reset_idx)):
                 break
+            else:
+                # print(reset_idx)
+
+                # print(self.rand_xy[reset_idx, :].shape)
+                # print(torch.sum(torch.any(reset_idx, dim=1)))
+                self.rand_xy[torch.any(reset_idx,dim=1),:, :] = torch.stack((torch.FloatTensor(torch.sum(torch.any(reset_idx, dim=1)), 3).uniform_(-0.13,0.13),
+                                                         torch.FloatTensor(torch.sum(torch.any(reset_idx, dim=1)), 3).uniform_(-0.23,0.23)),dim=2).to(self.device)
             
         print("success generate initial pos!!!")
                 
@@ -370,7 +407,10 @@ class FrankaBlockAssembly():
                 goal_pick_rot_list[i].append(goal_pick_rot)
                 goal_prepick_pos_list[i].append(goal_prepick_pos)
                 goal_place_pos_list[i].append(goal_place_pos)
-                goal_place_rot_list[i].append(goal_place_rot)
+                goal_place_rot_list[i].append(goal_place_rot)            # if self.frame_count % 10 == 0:
+            #     self._write_images()
+
+            # self.frame_count+=1
                 goal_preplace_pos_list[i].append(goal_preplace_pos)
                 goal_pose_list[i].append(goal_pose_world)
         
@@ -384,15 +424,32 @@ class FrankaBlockAssembly():
 
     def create_camera(self):
         # point camera at middle env
-        cam_pos = gymapi.Vec3(4, 3, 2)
-        cam_target = gymapi.Vec3(-4, -3, 0)
+        
+        side_cam_pos = gymapi.Vec3(4, 3, 2)
+        side_cam_target = gymapi.Vec3(-4, -3, 0)
 
         middle_env = self.envs[self.num_envs // 2 + self.num_per_row // 2]
-        self.gym.viewer_camera_look_at(self.viewer, middle_env, cam_pos, cam_target)
+        self.gym.viewer_camera_look_at(self.viewer, middle_env, side_cam_pos, side_cam_target)
 
         camera_properties = gymapi.CameraProperties()
         camera_properties.width = 640
         camera_properties.height = 480
+        camera_properties.enable_tensors = True
+
+        inHand_camera_properties = gymapi.CameraProperties()
+        inHand_camera_properties.width = 640
+        inHand_camera_properties.height = 480
+        inHand_camera_properties.enable_tensors = True
+
+
+
+        inHand_camera_rel_pose = gymapi.Transform()
+        inHand_camera_rel_pose.p = gymapi.Vec3(0.05, 0, 0)
+        inHand_camera_rel_pose.r = gymapi.Quat(0.707388, 0.0005629, 0.706825, 0.0005633)
+
+
+        self.side_camera_handle_list = []
+        self.inHand_camera_handle_list = []
 
         for i in range(self.num_envs):
 
@@ -402,6 +459,95 @@ class FrankaBlockAssembly():
             camera_position = gymapi.Vec3(1, 1, 1.0)
             camera_target = gymapi.Vec3(0, 0, 0)
             self.gym.set_camera_location(camera_handle, self.envs[i], camera_position, camera_target)
+            self.side_camera_handle_list.append(camera_handle)
+
+            camera_handle_robot = self.gym.create_camera_sensor(self.envs[i], inHand_camera_properties)
+            # link7_rb = self.gym.find_actor_rigid_body_handle(self.envs[i], self.hand_handle_list[i], 'panda_hand')
+            self.gym.attach_camera_to_body(camera_handle_robot, self.envs[i], self.hand_handle_list[i], inHand_camera_rel_pose, gymapi.FOLLOW_TRANSFORM)
+            self.inHand_camera_handle_list.append(camera_handle_robot)
+
+    def _create_image_directories(self):
+        self.time_str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        
+        # create root path
+        os.mkdir(os.path.join('Image_data', self.time_str))
+        img_pth_root = os.path.join('Image_data', self.time_str)
+        env_pth = os.path.join(img_pth_root, 'env_{}')
+        
+        # create path for each envs
+        for i in range(self.num_envs):
+            envid_str = str(i).zfill(5)
+            os.mkdir(env_pth.format(envid_str))
+
+            # self.side_img_pth_rgb = os.path.join(env_pth, 'side_rgb')
+            # self.side_img_pth_depth = os.path.join(env_pth, 'side_depth')
+            # self.side_img_pth_semantic = os.path.join(env_pth, 'side_semantic')
+
+            img_pth_rgb = os.path.join(env_pth, 'rgb')
+            img_pth_depth = os.path.join(env_pth, 'depth')
+            img_pth_semantic = os.path.join(env_pth, 'semantic')
+
+            # create rgb, depth, semantic path
+            os.mkdir(img_pth_rgb.format(envid_str))
+            os.mkdir(img_pth_depth.format(envid_str))
+            os.mkdir(img_pth_semantic.format(envid_str))
+
+    
+            self.side_img_pth_rgb = os.path.join(img_pth_rgb, 'side')
+            self.side_img_pth_depth = os.path.join(img_pth_depth, 'side')
+            self.side_img_pth_semantic = os.path.join(img_pth_semantic, 'side')
+
+            self.inHand_img_pth_rgb = os.path.join(img_pth_rgb, 'in_hand')
+            self.inHand_img_pth_depth = os.path.join(img_pth_depth, 'in_hand')
+            self.inHand_img_pth_semantic = os.path.join(img_pth_semantic, 'in_hand')
+
+            os.mkdir(self.side_img_pth_rgb.format(envid_str))
+            os.mkdir(self.side_img_pth_depth.format(envid_str))
+            os.mkdir(self.side_img_pth_semantic.format(envid_str))      
+
+            os.mkdir(self.inHand_img_pth_rgb.format(envid_str))
+            os.mkdir(self.inHand_img_pth_depth.format(envid_str))
+            os.mkdir(self.inHand_img_pth_semantic.format(envid_str))
+    
+    def _write_images(self):
+
+        for i in range(self.num_envs):
+            if self.reward[i]<0.99:
+                side_rgb_pth = self.side_img_pth_rgb.format(str(i).zfill(5))
+                side_depth_pth = self.side_img_pth_depth.format(str(i).zfill(5))
+                side_semantic_pth = self.side_img_pth_semantic.format(str(i).zfill(5))
+
+                inHand_rgb_pth = self.inHand_img_pth_rgb.format(str(i).zfill(5))
+                inHand_depth_pth = self.inHand_img_pth_depth.format(str(i).zfill(5))
+                inHand_semantic_pth = self.inHand_img_pth_semantic.format(str(i).zfill(5))
+                frame_id_str = str(self.frame_count//10).zfill(5)
+
+                self.gym.write_camera_image_to_file(self.sim, self.envs[i], self.side_camera_handle_list[i], gymapi.IMAGE_COLOR,
+                    os.path.join(side_rgb_pth, 'frame_{}.png'.format(frame_id_str)))
+                
+                side_depth = self.gym.get_camera_image(self.sim, self.envs[i], self.side_camera_handle_list[i], gymapi.IMAGE_DEPTH)
+                side_depth[side_depth == -np.inf] = 0
+                np.save(os.path.join(side_depth_pth, 'frame_{}'.format(frame_id_str)), side_depth)
+
+                side_semantic = self.gym.get_camera_image(self.sim, self.envs[i], self.side_camera_handle_list[i], gymapi.IMAGE_SEGMENTATION)
+
+                np.save(os.path.join(side_semantic_pth, 'frame_{}'.format(frame_id_str)), side_semantic)
+
+                self.gym.write_camera_image_to_file(self.sim, self.envs[i], self.inHand_camera_handle_list[i], gymapi.IMAGE_COLOR,
+                    os.path.join(inHand_rgb_pth, 'frame_{}.png'.format(frame_id_str)))
+                
+                inHand_depth = self.gym.get_camera_image(self.sim, self.envs[i], self.inHand_camera_handle_list[i], gymapi.IMAGE_DEPTH)
+                inHand_depth[inHand_depth == -np.inf] = 0
+                np.save(os.path.join(inHand_depth_pth, 'frame_{}'.format(frame_id_str)), inHand_depth)
+                
+                inHand_semantic = self.gym.get_camera_image(self.sim, self.envs[i], self.inHand_camera_handle_list[i], gymapi.IMAGE_SEGMENTATION)
+                
+                # normalized_depth = -255.0 * (depth / np.min(depth + 1e-4))
+                # normalized_depth_image = im.fromarray(normalized_depth.astype(np.uint8), mode="L")
+                # normalized_depth_image.save(os.path.join(depth_pth, 'frame_{}.jpg'.format(str(self.progress_buf[0].item()).zfill(4))))
+
+                
+                np.save(os.path.join(inHand_semantic_pth, 'frame_{}'.format(frame_id_str)), inHand_semantic)
                 
     def quat_axis(q, axis=0):
         basis_vec = torch.zeros(q.shape[0], 3, device=q.device)
@@ -413,6 +559,11 @@ class FrankaBlockAssembly():
         q_r = quat_mul(desired, cc)
         return q_r[:, 0:3] * torch.sign(q_r[:, 3]).unsqueeze(-1)
 
+    def _orientation_error(self, desired, current):
+        cc = quat_conjugate(current)
+        q_r = quat_mul(desired, cc)
+        return q_r[:,:, 0:3] * torch.sign(q_r[:,:, 3]).unsqueeze(-1)
+
     def control_ik(self, dpose):
         # solve damped least squares
         j_eef_T = torch.transpose(self.j_eef, 1, 2)
@@ -420,9 +571,23 @@ class FrankaBlockAssembly():
         u = (j_eef_T @ torch.inverse(self.j_eef @ j_eef_T + lmbda) @ dpose).view(self.num_envs, 7)
         return u
     
-    def check_place(curr_pose, target_pose):
+    def check_place(self,current_pose_list):
 
-        pass
+        # print(self.goal_pose_list.shape)
+        # print(current_pose_list.shape)
+        pos_err = torch.norm(self.goal_pose_list[:,:,:3] - current_pose_list[:,:,:3],dim=2)
+        rot_err = torch.norm(self._orientation_error(current_pose_list[:,:,3:7],self.goal_pose_list[:,:,3:7]),dim=2)
+        # print(pos_err)
+        # print(rot_err)
+
+        check_pos = torch.where(pos_err<0.005,1,0)
+        check_rot = torch.where(rot_err<0.1,1,0)
+
+        done = torch.sum(torch.logical_and(check_pos,check_rot),dim=1)
+
+        self.reward = done*(1.0/len(self.goal_list))
+
+        # print(self.reward)
             
     def simulate(self):
         
@@ -449,9 +614,15 @@ class FrankaBlockAssembly():
         goal_pos = self.goal_prepick_pos_list[ind,step]
         goal_rot = self.goal_pick_rot_list[ind,step]
 
+        self.reward = torch.zeros(self.num_envs,dtype=torch.float32).to(self.device)
+
+        self.frame_count = 0
+
+        self._create_image_directories()
+
 
         # simulation loop
-        while self.viewer is None or not self.gym.query_viewer_has_closed(self.viewer):
+        while self.viewer is None or not self.gym.query_viewer_has_closed(self.viewer) or self.frame_count<2000:
 
             # step the physics
             self.gym.simulate(self.sim)
@@ -473,8 +644,6 @@ class FrankaBlockAssembly():
             block_rot_list = self.rb_states[self.block_idxs_list, 3:7]
 
             current_pose_list = torch.cat([block_pos_list,block_rot_list],dim=2).to(self.device)
-
-            
 
             # hand_vel = self.rb_states[self.hand_idxs, 7:]
 
@@ -678,6 +847,8 @@ class FrankaBlockAssembly():
             placed_counter[reset] = 0
             picked_counter[reset] = 0
 
+            self.check_place(current_pose_list)
+
 
                 
             # else:
@@ -701,16 +872,30 @@ class FrankaBlockAssembly():
             # Deploy actions
             self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self.pos_action))
 
+            # save images
+
+            if args.save:
+                if self.frame_count % 10 == 0:
+                    self._write_images()
+
+
+            self.frame_count+=1
+
+
             # update viewer
             self.gym.step_graphics(self.sim)
             self.gym.draw_viewer(self.viewer, self.sim, False)
             self.gym.sync_frame_time(self.sim)
 
 
-
         # cleanup
         self.gym.destroy_viewer(self.viewer)
         self.gym.destroy_sim(self.sim)
+
+        for i in range(self.num_envs):
+            if self.reward[i]<0.99:
+                shutil.rmtree('/path/to/your/dir/')
+
 
 
 if __name__ == "__main__":

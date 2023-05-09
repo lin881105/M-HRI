@@ -1,3 +1,5 @@
 mano_pybullet/
 manopth/
 DexGraspNet/
+Image_data/
+test.py
