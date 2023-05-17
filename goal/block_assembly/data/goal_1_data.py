@@ -10,10 +10,14 @@ import random
 import time
 from utils import utils
 import scipy.io as sio
+from data.goal import Goal
+import copy
 
 
-class Goal_1():
+class Goal_1(Goal):
     def __init__(self):
+
+        self.device = 'cuda:0'
 
         self.goal = [0,0,1]
         self.goal_pose = []
@@ -36,3 +40,16 @@ class Goal_1():
         self.goal_pose.append(utils.gymapi_transform2mat(goal_pose_1))
         self.goal_pose.append(utils.gymapi_transform2mat(goal_pose_2))
         self.goal_pose.append(utils.gymapi_transform2mat(goal_pose_3))
+
+        # self.hand_rel_mat_list = []
+        # self.hand_pose_list = []
+
+        # self.hand_rel_mat_list.append(self.get_hand_rel_mat(self._dict[0][1]["hand_ref_pose"],self._dict[0][1]["obj_init"]))
+        # self.hand_rel_mat_list.append(self.get_hand_rel_mat(self._dict[0][1]["hand_ref_pose"],self._dict[0][1]["obj_init"]))
+        # self.hand_rel_mat_list.append(self.get_hand_rel_mat(self._dict[1][21]["hand_ref_pose"],self._dict[1][21]["obj_init"]))
+
+        # self.hand_pose_list.append(self._dict[0][1]["hand_ref_pose"])
+        # self.hand_pose_list.append(self._dict[0][1]["hand_ref_pose"])
+        # self.hand_pose_list.append(self._dict[1][21]["hand_ref_pose"])
+
+

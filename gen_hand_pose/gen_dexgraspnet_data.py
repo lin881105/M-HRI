@@ -18,7 +18,11 @@ from scipy.spatial.transform import Rotation as Rot
 
 from manopth.manolayer import ManoLayer
 from mano_pybullet.hand_model import HandModel45
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--type",type=int,default=0)
+args = parser.parse_args()
 # def fast_load_obj(file_obj, **kwargs):
 #     """
 #     Code slightly adapted from trimesh (https://github.com/mikedh/trimesh)
@@ -350,7 +354,7 @@ def process_blocks(block_name):
 def run(root_dir):
     out_dict = {}
     
-    data_pth_list = sorted(glob.glob(root_dir))[0:5] # modify to change block type
+    data_pth_list = sorted(glob.glob(root_dir))[args.type:args.type+1] # modify to change block type
 
     for type_id, pth in enumerate(data_pth_list):
         out_dict[type_id] = {}

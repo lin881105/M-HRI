@@ -7,11 +7,11 @@ import torch
 from utils import utils
 import pytorch3d.transforms
 import math
+from data.goal import Goal
 
 
 
-
-class Goal_2():
+class Goal_2(Goal):
     def __init__(self):
 
         self.device = 'cuda:0'

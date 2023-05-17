@@ -14,6 +14,7 @@ from utils import utils
 from scipy.spatial.transform import Rotation as R
 import pytorch3d.transforms
 import quaternion
+import goal.block_assembly.data as data
 
 # set random seed
 np.random.seed(20)
@@ -21,40 +22,13 @@ custom_parameters = [
     {"name": "--controller", "type": str, "default": "ik", "help": "Controller to use for Franka. Options are {ik, osc}"},
     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
     {"name": "--headless", "action": "store_true", "help": "Run headless"},
+    {"name": "--goal", "type":int, "default": 0}
 ]
 
 args = gymutil.parse_arguments(
     description="Joint control Methods Example",
     custom_parameters=custom_parameters,
     )
-
-
-def check_in_region(region_xy, rand_xy):
-    for i in range(rand_xy.shape[0]):
-        if np.linalg.norm(region_xy - rand_xy[i]) < 0.08:
-            return True
-    
-    return False
-
-def check_contact_block(rand_xy):
-    for i in range(rand_xy.shape[0]):
-        for j in range(i+1, rand_xy.shape[0]):
-            if np.linalg.norm(rand_xy[i] - rand_xy[j]) < 0.05:
-                return True
-            
-    return False
-
-region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], 2)
-
-while True:
-    rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (3, 2))
-    
-    if check_in_region(region_xy, rand_xy) or check_contact_block(rand_xy):
-        continue
-    else:
-        break
-    
-print("success generate initial pos!!!")
 
 class ManoBlockAssembly():
     def __init__(self):
@@ -64,8 +38,7 @@ class ManoBlockAssembly():
         # create simulator
         self.num_envs = 10
         self.env_spacing = 1.5
-        self.max_episode_length = 195
-        
+        self.task = data.names[args.goal]
         
 
         self.create_sim()
@@ -217,14 +190,11 @@ class ManoBlockAssembly():
         region_pose = gymapi.Transform()
 
         # read block goal pos
-        mat_file = "goal/block_assembly/data/goal_2_data.mat"
+        mat_file = "goal/block_assembly/data/goal_1_data.mat"
         mat_dict = sio.loadmat(mat_file)
 
         self.block_list = mat_dict["block_list"][0]
         self.goal_pose = mat_dict["block_pose"]
-        # self.rel_pick_pos = mat_dict["pick_pose"]
-        # self.rel_place_pos = mat_dict["place_pose"]
-        # self.block_pos_world = mat_dict["block_world"]
         self.block_height = mat_dict["block_height"]
 
         # cache some common handles for later use
@@ -234,6 +204,10 @@ class ManoBlockAssembly():
         self.envs = []
 
         _goal_list = []
+
+        init_pose_mat = sio.loadmat("data/2023-05-09-22-32-32/env_00000/init_pose.mat")
+        init_block_pose = init_pose_mat["block_init_pose_world"]
+        init_region_pose = init_pose_mat["region_init_pose_world"][0]
 
         # create and populate the environments
         for i in range(num_envs):
@@ -249,30 +223,48 @@ class ManoBlockAssembly():
             # self.gym.set_rigid_body_color(env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(60, 33, 0) / 255)
 
             # add region
-            region_pose.p.x = table_pose.p.x + region_xy[0]
-            region_pose.p.y = table_pose.p.y + region_xy[1]
-            region_pose.p.z = table_dims.z #+ 0.001
+            # region_pose.p.x = table_pose.p.x + region_xy[0]
+            # region_pose.p.y = table_pose.p.y + region_xy[1]
+            # region_pose.p.z = table_dims.z #+ 0.001
             # region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+            region_pose.p.x = init_region_pose[0]
+            region_pose.p.y = init_region_pose[1]
+            region_pose.p.z = init_region_pose[2]
+            region_pose.r.x = init_region_pose[3]
+            region_pose.r.y = init_region_pose[4]
+            region_pose.r.z = init_region_pose[5]
+            region_pose.r.w = init_region_pose[6]
 
             region_handle = self.gym.create_actor(env_ptr, region_asset, region_pose, "target", i, 1, 1) # 001
             self.gym.set_rigid_body_color(env_ptr, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0., 0., 0.))
 
             goal = []
-            np.random.seed(20)
+
+        
             for cnt, idx in enumerate(self.block_list):
+                # block_pose = gymapi.Transform()
+                # block_pose.p.x = table_pose.p.x + rand_xy[cnt, 0]
+                # block_pose.p.y = table_pose.p.y + rand_xy[cnt, 1]
+                # block_pose.p.z = table_dims.z + self.block_height[0][cnt]
+
+
                 block_pose = gymapi.Transform()
-                block_pose.p.x = table_pose.p.x + rand_xy[cnt, 0]
-                block_pose.p.y = table_pose.p.y + rand_xy[cnt, 1]
-                block_pose.p.z = table_dims.z + self.block_height[0][cnt]
+                block_pose.p.x = init_block_pose[cnt][0]
+                block_pose.p.y = init_block_pose[cnt][1]
+                block_pose.p.z = init_block_pose[cnt][2]
+                block_pose.r.x = init_block_pose[cnt][3]
+                block_pose.r.y = init_block_pose[cnt][4]
+                block_pose.r.z = init_block_pose[cnt][5]
+                block_pose.r.w = init_block_pose[cnt][6]
 
-                # angle = np.random.uniform(-math.pi, math.pi)
-                # r1 = R.from_euler('z', angle)
-                r2 = R.from_matrix(self.goal_pose[cnt][:3,:3])
-                # rot = r1 * r2
-                # euler = rot.as_euler("xyz", degrees=False)
-                euler = r2.as_euler("xyz", degrees=False)
+                # # angle = np.random.uniform(-math.pi, math.pi)
+                # # r1 = R.from_euler('z', angle)
+                # r2 = R.from_matrix(self.goal_pose[cnt][:3,:3])
+                # # rot = r1 * r2
+                # # euler = rot.as_euler("xyz", degrees=False)
+                # euler = r2.as_euler("xyz", degrees=False)
 
-                block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
+                # block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
             
                 # block_pose=utils.mat2gymapi_transform(block_pos_world[cnt])
                 block_handle = self.gym.create_actor(env_ptr, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i, 2 ** (cnt + 1), cnt + 2) # 010
@@ -345,26 +337,26 @@ class ManoBlockAssembly():
         pass
 
     def get_hand_rel_mat(self):
-        obj_init = np.array([-0.19434147, -0.11968146, 0.01548913, -0.50471319, 0.49524648, -0.4952225 , 0.50472785])
+        # obj_init = np.array([-0.19434147, -0.11968146, 0.01548913, -0.50471319, 0.49524648, -0.4952225 , 0.50472785])
         # obj_init = np.array([-0.14587866,  0.20421203,  0.02021903, -0.06949283, -0.103413  ,-0.43897412,  0.88929234]) # 拱門
 
         obj_init_mat = np.eye(4)
         obj_init_mat[:3, :3] = R.from_quat(obj_init[3:7]).as_matrix()
         obj_init_mat[:3, 3] = obj_init[0:3]
 
-        hand_goal_pose = np.array([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
-        1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
-        4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
-       -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
-       -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
-        8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
-       -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
-       -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
-        3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
-       -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
-        8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
-        1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
-        6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=np.float32)
+    #     hand_goal_pose = np.array([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
+    #     1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
+    #     4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
+    #    -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
+    #    -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
+    #     8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
+    #    -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
+    #    -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
+    #     3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
+    #    -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
+    #     8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
+    #     1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
+    #     6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=np.float32)
     #     hand_goal_pose = np.array([-0.10150228,  0.19490343,  0.07588965,  1.0861137 , -0.84895056,
     #    -0.54786706,  0.22902231, -0.28977403,  0.3116039 ,  0.08973111,
     #     0.00571879,  0.7467749 , -0.11694898,  0.04409688,  0.22905038,
@@ -423,19 +415,19 @@ class ManoBlockAssembly():
     
 
     def set_hand_pos(self,new_wrist_mat):
-        self.hand_goal_pose = torch.tensor([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
-        1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
-        4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
-       -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
-       -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
-        8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
-       -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
-       -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
-        3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
-       -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
-        8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
-        1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
-        6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=torch.float32).to(self.device)
+    #     self.hand_goal_pose = torch.tensor([-2.21341878e-01, -9.16626230e-02,  4.62329611e-02,  7.10443914e-01,
+    #     1.03342474e+00,  6.83313906e-01,  9.92064774e-02, -3.72702628e-01,
+    #     4.46040370e-02, -5.28285541e-02, -5.52620320e-03,  5.32112420e-01,
+    #    -4.80155941e-05,  1.02795474e-01,  5.55250525e-01, -8.04432929e-02,
+    #    -2.32878298e-01,  3.73034596e-01, -1.14381686e-01, -5.27032204e-02,
+    #     8.16306233e-01, -7.38171935e-02,  1.53227076e-02,  5.00212252e-01,
+    #    -2.46633589e-01,  4.64982808e-01,  3.36053818e-01, -5.66753924e-01,
+    #    -1.40147611e-01,  5.69896758e-01, -2.88565457e-01,  1.14357322e-01,
+    #     3.84515792e-01, -5.99057525e-02,  6.84615299e-02,  3.46477389e-01,
+    #    -3.27767521e-01, -9.36669484e-02,  8.54686618e-01, -2.59945124e-01,
+    #     8.57274905e-02,  5.39167941e-01,  8.35047126e-01, -3.57780121e-02,
+    #     1.43417954e-01, -4.95447308e-01, -5.04968353e-02,  5.73221631e-02,
+    #     6.18857801e-01, -1.02387838e-01,  3.12080264e-01], dtype=torch.float32).to(self.device)
 
         new_dof_state = self.dof_state.clone()
         
@@ -541,17 +533,17 @@ class ManoBlockAssembly():
         set_object = False
 
 
-        if self.stage == 2 or self.stage==3 or self.stage==4 or  self.stage==8 or self.stage==9 or self.stage==10:
+        if self.stage%6 == 2 or self.stage%6 ==3 or self.stage%6==4 :
             set_object = True
-        if self.stage == 4 or self.stage==10:
+        if self.stage%6 == 4:
             block_threshold = 0.01
         else:
             block_threshold = 0.1
-        if self.stage == 1 or self.stage == 7:
+        if self.stage%6 == 1:
             threshold = 0.005
         else:
             threshold = 0.1
-        if self.stage == 5 or self.stage == 11:
+        if self.stage%6 == 5:
             self.reset_grasp_pose()
 
         if not set_object:

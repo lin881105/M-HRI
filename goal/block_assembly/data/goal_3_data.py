@@ -6,11 +6,12 @@ import numpy as np
 import torch
 from utils import utils
 import pytorch3d.transforms
+from data.goal import Goal
 
 
 
 
-class Goal_3():
+class Goal_3(Goal):
     def __init__(self):
 
         self.device = 'cuda:0'
