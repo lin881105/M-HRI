@@ -253,7 +253,7 @@ class FrankaBlockAssembly():
                 "region_init_pose_world":region_init_pose,
             }
 
-            sio.savemat(f"data/{self.time_str}/env_{str(i).zfill(5)}/init_pose.mat",init_pose)
+            sio.savemat(f"data/goal_{args.goal}/{self.time_str}/env_{str(i).zfill(5)}/init_pose.mat",init_pose)
 
 
             # # get global index of box in rigid body state tensor
@@ -311,7 +311,7 @@ class FrankaBlockAssembly():
         self.pos_action = torch.zeros_like(self.dof_pos).squeeze(-1)
     
     def load_goal_data(self):
-        mat_file = f"goal/block_assembly/data/goal_{args.goal}_data.mat"
+        mat_file = f"goal/block_assembly/goal_data/goal_{args.goal}_data.mat"
         mat_dict = sio.loadmat(mat_file)
 
         self.goal_list = mat_dict["block_list"][0]
@@ -489,8 +489,9 @@ class FrankaBlockAssembly():
         self.time_str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         
         # create root path
-        os.mkdir(os.path.join('data', self.time_str))
-        img_pth_root = os.path.join('data', self.time_str)
+        # os.makedirs(os.path.join('data',f'goal_{args.goal}',exist_ok=True))
+        os.makedirs(os.path.join('data', f'goal_{args.goal}',self.time_str),exist_ok=True)
+        img_pth_root = os.path.join('data', f'goal_{args.goal}',self.time_str)
         env_pth = os.path.join(img_pth_root, 'env_{}')
         
         # create path for each envs
@@ -812,9 +813,15 @@ class FrankaBlockAssembly():
         self.gym.destroy_viewer(self.viewer)
         self.gym.destroy_sim(self.sim)
 
+        success_env = []
+
         for i in range(self.num_envs):
             if self.reward[i]<0.99:
-                shutil.rmtree(f'data/{self.time_str}/env_{str(i).zfill(5)}')
+                shutil.rmtree(f'data/goal_{args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
+                success_env.append(i)
+        
+        return success_env, self.region_pose_list, self.rand_xy
+
 
 if __name__ == "__main__":
     issac = FrankaBlockAssembly()

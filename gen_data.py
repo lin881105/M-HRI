@@ -25,7 +25,7 @@ import random
 import time
 from utils import utils
 import scipy.io as sio
-import goal_data
+import goal.block_assembly.goal_data as goal_data
 
 
 def quat_axis(q, axis=0):

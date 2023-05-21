@@ -7,7 +7,7 @@ import torch
 from utils import utils
 import pytorch3d.transforms
 import math
-from data.goal import Goal
+from goal.block_assembly.goal_data.goal import Goal
 
 
 
