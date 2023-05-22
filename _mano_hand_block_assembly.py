@@ -17,17 +17,17 @@ from time import sleep
 from tqdm import trange
 import datetime
 # set random seed
-# custom_parameters = [
-#     {"name": "--controller", "type": str, "default": "ik", "help": "Controller to use for Franka. Options are {ik, osc}"},
-#     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
-#     {"name": "--headless", "action": "store_true", "help": "Run headless"},
-#     {"name": "--goal", "type":int, "default": 0}
-# ]
+custom_parameters = [
+    {"name": "--controller", "type": str, "default": "ik", "help": "Controller to use for Franka. Options are {ik, osc}"},
+    {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
+    {"name": "--headless", "action": "store_true", "help": "Run headless"},
+    {"name": "--goal", "type":int, "default": 0}
+]
 
-# args = gymutil.parse_arguments(
-#     description="Joint control Methods Example",
-#     custom_parameters=custom_parameters,
-#     )
+args = gymutil.parse_arguments(
+    description="Joint control Methods Example",
+    custom_parameters=custom_parameters,
+    )
 
 class ManoBlockAssembly():
     def __init__(self,success_envs,init_block_pose,init_region_pose,img_path_root,args):
@@ -37,12 +37,9 @@ class ManoBlockAssembly():
         # create simulator
         self.num_envs = len(success_envs)
         self.success_envs = success_envs
-        self.init_block_pose = init_block_pose
-        self.init_region_pose = init_region_pose
         self.env_spacing = 1.5
         self.goal = args.goal
         self.device = "cuda:0"
-        self.img_pth = img_path_root
         self.save=args.save
         # self.init_block_pose = init_block_pose
         # self.init_region_pose = init_region_pose

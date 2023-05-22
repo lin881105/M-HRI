@@ -16,6 +16,7 @@ from scipy.spatial.transform import Rotation as R
 import shutil
 from tqdm import trange
 import scipy.io as sio
+from mano_block_assembly import ManoBlockAssembly
 
 
 custom_parameters = [
@@ -194,6 +195,8 @@ class FrankaBlockAssembly():
         self.block_handles_list = [ [] for _ in range(self.num_envs)]
         self.region_pose_list = []
         self.hand_handle_list = []
+        self.region_init_pose_list = []
+        self.block_init_pose_list = [[] for _ in range(self.num_envs)]
 
         for i in range(self.num_envs):
 
@@ -208,20 +211,19 @@ class FrankaBlockAssembly():
             region_pose.p.x = table_pose.p.x + self.region_xy[i][0]
             region_pose.p.y = table_pose.p.y + self.region_xy[i][1]
             region_pose.p.z = table_dims.z #+ 0.001
-            region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+            region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi/2, math.pi/2))
             
             region_pose_mat = utils.gymapi_transform2mat(region_pose)
             self.region_pose_list.append(region_pose_mat)
 
-            region_init_pose = np.array((region_pose.p.x,region_pose.p.y,region_pose.p.z,
-                                              region_pose.r.x,region_pose.r.y,region_pose.r.z,region_pose.r.w))
+            self.region_init_pose_list.append(np.array((region_pose.p.x,region_pose.p.y,region_pose.p.z,
+                                              region_pose.r.x,region_pose.r.y,region_pose.r.z,region_pose.r.w)))
 
             black = gymapi.Vec3(0.,0.,0.)
             region_handle = self.gym.create_actor(env, region_asset, region_pose, "target", i, 1, 2)
             self.gym.set_rigid_body_color(env, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, black)
 
             # add box
-            block_init_pose_list = []
 
             for j, idx in enumerate(self.goal_list):
 
@@ -230,7 +232,7 @@ class FrankaBlockAssembly():
                 block_pose.p.y = table_pose.p.y + self.rand_xy[i][j][1]
                 block_pose.p.z = table_dims.z + self.block_height[0][j]
 
-                r1 = R.from_euler('z', np.random.uniform(-math.pi, math.pi))
+                r1 = R.from_euler('z', np.random.uniform(-math.pi/2, math.pi/2))
                 r2 = R.from_matrix(self.goal_pose[j][:3,:3])
                 rot = r1 * r2
                 euler = rot.as_euler("xyz", degrees=False)
@@ -245,15 +247,15 @@ class FrankaBlockAssembly():
                 block_idx = self.gym.get_actor_rigid_body_index(env, block_handle, 0, gymapi.DOMAIN_SIM)
                 self.block_idxs_list[i].append(block_idx)
 
-                block_init_pose_list.append(np.array((block_pose.p.x,block_pose.p.y,block_pose.p.z,
+                self.block_init_pose_list[i].append(np.array((block_pose.p.x,block_pose.p.y,block_pose.p.z,
                                                              block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)))
             
-            init_pose = {
-                "block_init_pose_world":block_init_pose_list,
-                "region_init_pose_world":region_init_pose,
-            }
+            # init_pose = {
+            #     "block_init_pose_world":block_init_pose_list,
+            #     "region_init_pose_world":region_init_pose,
+            # }
 
-            sio.savemat(f"data/goal_{args.goal}/{self.time_str}/env_{str(i).zfill(5)}/init_pose.mat",init_pose)
+            # sio.savemat(f"data/goal_{args.goal}/{self.time_str}/env_{str(i).zfill(5)}/init_pose.mat",init_pose)
 
 
             # # get global index of box in rigid body state tensor
@@ -491,8 +493,8 @@ class FrankaBlockAssembly():
         # create root path
         # os.makedirs(os.path.join('data',f'goal_{args.goal}',exist_ok=True))
         os.makedirs(os.path.join('data', f'goal_{args.goal}',self.time_str),exist_ok=True)
-        img_pth_root = os.path.join('data', f'goal_{args.goal}',self.time_str)
-        env_pth = os.path.join(img_pth_root, 'env_{}')
+        self.img_pth_root = os.path.join('data', f'goal_{args.goal}',self.time_str)
+        env_pth = os.path.join(self.img_pth_root, 'env_{}')
         
         # create path for each envs
         for i in range(self.num_envs):
@@ -818,12 +820,16 @@ class FrankaBlockAssembly():
         for i in range(self.num_envs):
             if self.reward[i]<0.99:
                 shutil.rmtree(f'data/goal_{args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
+            else:
                 success_env.append(i)
         
-        return success_env, self.region_pose_list, self.rand_xy
+        return success_env, self.region_init_pose_list, self.block_init_pose_list,self.img_pth_root
 
 
 if __name__ == "__main__":
     issac = FrankaBlockAssembly()
-    issac.simulate()
+    success_envs,region,block,img_pth=issac.simulate()
+
+    mano = ManoBlockAssembly(success_envs,block,region,img_pth,args)
+    mano.simulate()
     
