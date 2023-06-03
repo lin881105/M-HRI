@@ -30,19 +30,24 @@ import datetime
 #     )
 
 class ManoBlockAssembly():
-    def __init__(self,success_envs,init_block_pose,init_region_pose,img_path_root,args):
+    def __init__(self,info,args):
         # initialize gym
         self.gym = gymapi.acquire_gym()
 
+        # load env info
+        self.success_envs = info["success_envs"]
+        self.init_block_pose = info["block_init_pose"]
+        self.init_region_pose = info["region_init_pose"]
+        self.img_pth = info["img_pth"]
+        self.block_color = info["block_color"]
+        
+        
         # create simulator
-        self.num_envs = len(success_envs)
-        self.success_envs = success_envs
-        self.init_block_pose = init_block_pose
-        self.init_region_pose = init_region_pose
+        self.num_envs = len(self.success_envs)
         self.env_spacing = 1.5
         self.goal = args.goal
         self.device = "cuda:0"
-        self.img_pth = img_path_root
+        
         self.save=args.save
         # self.init_block_pose = init_block_pose
         # self.init_region_pose = init_region_pose
@@ -85,66 +90,66 @@ class ManoBlockAssembly():
 
         # self.get_step_size()
 
-    def check_in_region(self, region_xy, rand_xy):
-        # for j in range(rand_xy.shape[0]):
-        #     for i in range(rand_xy.shape[1]):
-        #         if np.linalg.norm(region_xy[j] - rand_xy[j][i]) < 0.08:
-        #             return True
-        reset_idx = torch.where(torch.norm(region_xy.unsqueeze(1).repeat(1,len(self.goal_list),1) - rand_xy,dim=2)<0.08,True,False)
-        # reset_idx = torch.logical_not(_diff).to(self.device)
+    # def check_in_region(self, region_xy, rand_xy):
+    #     # for j in range(rand_xy.shape[0]):
+    #     #     for i in range(rand_xy.shape[1]):
+    #     #         if np.linalg.norm(region_xy[j] - rand_xy[j][i]) < 0.08:
+    #     #             return True
+    #     reset_idx = torch.where(torch.norm(region_xy.unsqueeze(1).repeat(1,len(self.goal_list),1) - rand_xy,dim=2)<0.08,True,False)
+    #     # reset_idx = torch.logical_not(_diff).to(self.device)
    
-        # reset_idx = torch.logical_not(_diff).to(self.device)
+    #     # reset_idx = torch.logical_not(_diff).to(self.device)
         
-        return reset_idx
+    #     return reset_idx
 
-    def check_contact_block(self,rand_xy):
-        # for k in range(rand_xy.shape[0]):
-        #     for i in range(rand_xy.shape[1]):
-        #         for j in range(i+1, rand_xy.shape[2]):
-        #             if np.linalg.norm(rand_xy[k][i] - rand_xy[k][j]) < 0.08:
-        #                 return True
-        _diff=[]
-        for i in range(len(self.goal_list)):
-            for j in range(i+1, len(self.goal_list)):
-                _diff.append(torch.norm(rand_xy[:,i,:] - rand_xy[:,i+1,:],dim=1).unsqueeze(1).to(self.device))
+    # def check_contact_block(self,rand_xy):
+    #     # for k in range(rand_xy.shape[0]):
+    #     #     for i in range(rand_xy.shape[1]):
+    #     #         for j in range(i+1, rand_xy.shape[2]):
+    #     #             if np.linalg.norm(rand_xy[k][i] - rand_xy[k][j]) < 0.08:
+    #     #                 return True
+    #     _diff=[]
+    #     for i in range(len(self.goal_list)):
+    #         for j in range(i+1, len(self.goal_list)):
+    #             _diff.append(torch.norm(rand_xy[:,i,:] - rand_xy[:,i+1,:],dim=1).unsqueeze(1).to(self.device))
 
-        # for i in range(len(self.goal_list)):
-        #     _tmp = rand_xy[:,i,:].repeat(1,3,1)
+    #     # for i in range(len(self.goal_list)):
+    #     #     _tmp = rand_xy[:,i,:].repeat(1,3,1)
 
             
-        _diff = torch.cat(_diff,dim=1).to(self.device)
+    #     _diff = torch.cat(_diff,dim=1).to(self.device)
         
-        reset_idx = torch.where(_diff<0.08,True,False)
+    #     reset_idx = torch.where(_diff<0.08,True,False)
                         
-        return reset_idx
+    #     return reset_idx
     
-    def generate_pose(self):
+    # def generate_pose(self):
 
-        # self.region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], (self.num_envs,2))
-        self.region_xy = torch.FloatTensor(self.num_envs,2).uniform_(-0.085,0.085).to(self.device)
-        self.rand_xy = torch.stack((torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.13,0.13),
-                                    torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.23,0.23)),dim=2).to(self.device)
+    #     # self.region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], (self.num_envs,2))
+    #     self.region_xy = torch.FloatTensor(self.num_envs,2).uniform_(-0.085,0.085).to(self.device)
+    #     self.rand_xy = torch.stack((torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.13,0.13),
+    #                                 torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.23,0.23)),dim=2).to(self.device)
 
-        while True:
-            # self.rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (self.num_envs,len(self.goal_list), 2))
-            region_reset_idx = self.check_in_region(self.region_xy, self.rand_xy)
-            block_reset_idx = self.check_contact_block(self.rand_xy)
-            # print(region_reset_idx)
-            # print(block_reset_idx)
+    #     while True:
+    #         # self.rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (self.num_envs,len(self.goal_list), 2))
+    #         region_reset_idx = self.check_in_region(self.region_xy, self.rand_xy)
+    #         block_reset_idx = self.check_contact_block(self.rand_xy)
+    #         # print(region_reset_idx)
+    #         # print(block_reset_idx)
 
-            reset_idx = torch.logical_or(region_reset_idx,block_reset_idx).to(self.device)
+    #         reset_idx = torch.logical_or(region_reset_idx,block_reset_idx).to(self.device)
 
-            if torch.all(torch.logical_not(reset_idx)):
-                break
-            else:
-                # print(reset_idx)
+    #         if torch.all(torch.logical_not(reset_idx)):
+    #             break
+    #         else:
+    #             # print(reset_idx)
 
-                # print(self.rand_xy[reset_idx, :].shape)
-                # print(torch.sum(torch.any(reset_idx, dim=1)))
-                self.rand_xy[torch.any(reset_idx,dim=1),:, :] = torch.stack((torch.FloatTensor(torch.sum(torch.any(reset_idx, dim=1)), len(self.goal_list)).uniform_(-0.13,0.13),
-                                                         torch.FloatTensor(torch.sum(torch.any(reset_idx, dim=1)), len(self.goal_list)).uniform_(-0.23,0.23)),dim=2).to(self.device)
+    #             # print(self.rand_xy[reset_idx, :].shape)
+    #             # print(torch.sum(torch.any(reset_idx, dim=1)))
+    #             self.rand_xy[torch.any(reset_idx,dim=1),:, :] = torch.stack((torch.FloatTensor(torch.sum(torch.any(reset_idx, dim=1)), len(self.goal_list)).uniform_(-0.13,0.13),
+    #                                                      torch.FloatTensor(torch.sum(torch.any(reset_idx, dim=1)), len(self.goal_list)).uniform_(-0.23,0.23)),dim=2).to(self.device)
             
-        print("success generate initial pos!!!")
+    #     print("success generate initial pos!!!")
     
     def get_goal_pose(self):
         # read block goal pos
@@ -196,18 +201,18 @@ class ManoBlockAssembly():
 
         self._create_ground_plane()
         self.num_per_row = int(math.sqrt(self.num_envs))
-        self._create_envs(self.num_envs, self.env_spacing, int(np.sqrt(self.num_envs)))
+        self._create_envs( self.env_spacing, int(np.sqrt(self.num_envs)))
 
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
         plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
         self.gym.add_ground(self.sim, plane_params)
 
-    def _create_envs(self, num_envs, spacing, num_per_row):
+    def _create_envs(self, spacing, num_per_row):
         lower = gymapi.Vec3(-spacing, 0.75 * -spacing, 0.0)
         upper = gymapi.Vec3(spacing, 0.75 * spacing, spacing)
 
-        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../assets")
         asset_file_mano = "urdf/mano/zeros/mano_addtips.urdf"
 
         # create mano asset
@@ -363,7 +368,7 @@ class ManoBlockAssembly():
 
 
 
-                color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+                color = self.block_color[env_idx][cnt]
                 self.gym.set_rigid_body_color(env_ptr, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
                 block_idx = self.gym.get_actor_index(env_ptr, block_handle, gymapi.DOMAIN_SIM)
                 self.block_indices[i].append(block_idx)
