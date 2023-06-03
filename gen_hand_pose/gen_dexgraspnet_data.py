@@ -316,7 +316,7 @@ def compute_contact(hand_param, obj_mesh_o3d):
     final_ee = full_joints.reshape(-1).detach().numpy()
 
     # visualize scene
-    visualize_scene(mano_layer, verts, obj_mesh_o3d, final_ee)
+    # visualize_scene(mano_layer, verts, obj_mesh_o3d, final_ee)
 
     # compute hand object contact and save
     contact_threshold = 0.015
@@ -354,7 +354,8 @@ def process_blocks(block_name):
 def run(root_dir):
     out_dict = {}
     
-    data_pth_list = sorted(glob.glob(root_dir))[args.type:args.type+1] # modify to change block type
+    # data_pth_list = sorted(glob.glob(root_dir))[args.type:args.type+1] # modify to change block type
+    data_pth_list = sorted(glob.glob(root_dir))[0:5] # modify to change block type
 
     for type_id, pth in enumerate(data_pth_list):
         out_dict[type_id] = {}
@@ -383,22 +384,22 @@ def run(root_dir):
             block_pose, obj_mesh_o3d = process_blocks(mesh_name)
             
             # process mano
-            final_ee, target_contacts = compute_contact(grasp_theta, obj_mesh_o3d)
+            final_ee, target_contacts = compute_contact(grasp_theta.copy(), obj_mesh_o3d)
             hand_init_pose = mano_to_handoversim(init_theta.copy())
             hand_grasp_pose = mano_to_handoversim(grasp_theta.copy())
             
             # output to pickle dict
-            out_dict[type_id][data_id]["obj_init"] = block_pose
-            out_dict[type_id][data_id]["obj_grasp"] = block_pose
+            out_dict[type_id][data_id]["obj_init"] = block_pose.copy()
+            out_dict[type_id][data_id]["obj_grasp"] = block_pose.copy()
             
-            out_dict[type_id][data_id]["hand_init_pose"] = hand_init_pose
-            out_dict[type_id][data_id]["hand_ref_pose"] = hand_grasp_pose
-            out_dict[type_id][data_id]["hand_ref_position"] = final_ee
-            out_dict[type_id][data_id]["hand_contact"] = target_contacts
+            out_dict[type_id][data_id]["hand_init_pose"] = hand_init_pose.copy()
+            out_dict[type_id][data_id]["hand_ref_pose"] = hand_grasp_pose.copy()
+            out_dict[type_id][data_id]["hand_ref_position"] = final_ee.copy()
+            out_dict[type_id][data_id]["hand_contact"] = target_contacts.copy()
     
     # write file
-    # with open(f"./dexgraspnet_all.pickle", "wb") as openfile:
-    #     pickle.dump(out_dict, openfile)
+    with open(f"./dexgraspnet_all.pickle", "wb") as openfile:
+        pickle.dump(out_dict, openfile)
 
     return out_dict
 

@@ -534,7 +534,7 @@ class FrankaBlockAssembly():
     def _write_images(self):
 
         for i in range(self.num_envs):
-            if self.done_counter[i]<30:
+            if self.done_counter[i]<50:
                 side_rgb_pth = self.side_img_pth_rgb.format(str(i).zfill(5))
                 side_depth_pth = self.side_img_pth_depth.format(str(i).zfill(5))
                 side_semantic_pth = self.side_img_pth_semantic.format(str(i).zfill(5))
@@ -832,4 +832,6 @@ if __name__ == "__main__":
 
     mano = ManoBlockAssembly(success_envs,block,region,img_pth,args)
     mano.simulate()
+
+
     

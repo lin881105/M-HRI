@@ -1,0 +1,9 @@
+python franka_block_assembly.py --goal=1 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=2 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=3 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=4 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=5 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=6 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=7 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=8 --num_envs=3 --save --headless
+python franka_block_assembly.py --goal=9 --num_envs=3 --save --headless

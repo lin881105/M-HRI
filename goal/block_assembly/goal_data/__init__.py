@@ -6,6 +6,7 @@ from goal.block_assembly.goal_data.goal_5_data import Goal_5
 from goal.block_assembly.goal_data.goal_6_data import Goal_6
 from goal.block_assembly.goal_data.goal_7_data import Goal_7
 from goal.block_assembly.goal_data.goal_8_data import Goal_8
+from goal.block_assembly.goal_data.goal_9_data import Goal_9
 
 
 names = {
@@ -17,4 +18,5 @@ names = {
     '6':Goal_6(),
     '7':Goal_7(),
     '8':Goal_8(),
+    '9':Goal_9(),
 }
