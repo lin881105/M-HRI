@@ -29,11 +29,11 @@ class Goal_1(Goal):
         goal_pose_1 = gymapi.Transform()
         goal_pose_1.p = gymapi.Vec3(0, 0, 0.0045)
 
-        goal_pose_1.r = gymapi.Quat.from_euler_zyx(-np.pi, 0, np.pi)
+        goal_pose_1.r = gymapi.Quat.from_euler_zyx(-np.pi, 0, np.pi/2)
 
         goal_pose_2 = gymapi.Transform()
         goal_pose_2.p = gymapi.Vec3(0, 0, 0.0135)
-        goal_pose_2.r = gymapi.Quat.from_euler_zyx(-np.pi, 0, np.pi)
+        goal_pose_2.r = gymapi.Quat.from_euler_zyx(-np.pi, 0, np.pi/2)
 
         self.block_height = [0.0045,0.0045]
 
