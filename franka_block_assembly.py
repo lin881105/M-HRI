@@ -24,6 +24,7 @@ custom_parameters = [
     {"name": "--headless", "action": "store_true", "help": "Run headless"},
     {"name": "--goal", "type": str, "default":'1',"help": ""},
     {"name": "--save", "action": "store_true"},
+    {"name": "--mano", "action": "store_true"},
 ]
 args = gymutil.parse_arguments(
     description="Franka block assembly demonstration",
@@ -482,6 +483,10 @@ class FrankaBlockAssembly():
             self.gym.set_camera_location(camera_handle, self.envs[i], camera_position, camera_target)
             self.side_camera_handle_list.append(camera_handle)
 
+            print(repr(self.gym.get_camera_view_matrix(self.sim, self.envs[i], camera_handle)))
+            print(repr(self.gym.get_camera_proj_matrix(self.sim, self.envs[i], camera_handle)))
+            exit()
+
             camera_handle_robot = self.gym.create_camera_sensor(self.envs[i], inHand_camera_properties)
             # link7_rb = self.gym.find_actor_rigid_body_handle(self.envs[i], self.hand_handle_list[i], 'panda_hand')
             self.gym.attach_camera_to_body(camera_handle_robot, self.envs[i], self.hand_handle_list[i], inHand_camera_rel_pose, gymapi.FOLLOW_TRANSFORM)
@@ -610,7 +615,10 @@ class FrankaBlockAssembly():
         self.reward = done*(1.0/len(self.goal_list))
 
         # print(self.reward)
-            
+
+    def get_camera_transform(self):
+        for camera_handle in self.inHand_camera_handle_list:
+            self.gym.get_camera_transform(self.sim,camera_handle)
     def simulate(self):
         
         step = torch.zeros(self.num_envs,dtype=torch.long).to(self.device)
@@ -830,6 +838,7 @@ if __name__ == "__main__":
     issac = FrankaBlockAssembly()
     success_envs,region,block,img_pth=issac.simulate()
 
-    mano = ManoBlockAssembly(success_envs,block,region,img_pth,args)
-    mano.simulate()
-    
+    if args.mano:
+        mano = ManoBlockAssembly(success_envs,block,region,img_pth,args)
+        mano.simulate()
+        

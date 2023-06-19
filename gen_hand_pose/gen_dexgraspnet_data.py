@@ -316,7 +316,7 @@ def compute_contact(hand_param, obj_mesh_o3d):
     final_ee = full_joints.reshape(-1).detach().numpy()
 
     # visualize scene
-    visualize_scene(mano_layer, verts, obj_mesh_o3d, final_ee)
+    # visualize_scene(mano_layer, verts, obj_mesh_o3d, final_ee)
 
     # compute hand object contact and save
     contact_threshold = 0.015
@@ -354,7 +354,7 @@ def process_blocks(block_name):
 def run(root_dir):
     out_dict = {}
     
-    data_pth_list = sorted(glob.glob(root_dir))[args.type:args.type+1] # modify to change block type
+    data_pth_list = sorted(glob.glob(root_dir))[3:4] # modify to change block type
 
     for type_id, pth in enumerate(data_pth_list):
         out_dict[type_id] = {}
@@ -368,9 +368,9 @@ def run(root_dir):
 
         for data_id, data in enumerate(tqdm(data_all)):
             out_dict[type_id][data_id] = {}
-            print('-' * 20)
-            print(data_id)
-            print()
+            # print('-' * 20)
+            # print(data_id)
+            # print()
 
             init_theta = np.concatenate([data['qpos_st']['rot'],
                                          data['qpos_st']['thetas'],
@@ -383,7 +383,7 @@ def run(root_dir):
             block_pose, obj_mesh_o3d = process_blocks(mesh_name)
             
             # process mano
-            final_ee, target_contacts = compute_contact(grasp_theta, obj_mesh_o3d)
+            final_ee, target_contacts = compute_contact(grasp_theta.copy(), obj_mesh_o3d)
             hand_init_pose = mano_to_handoversim(init_theta.copy())
             hand_grasp_pose = mano_to_handoversim(grasp_theta.copy())
             
@@ -397,8 +397,8 @@ def run(root_dir):
             out_dict[type_id][data_id]["hand_contact"] = target_contacts
     
     # write file
-    # with open(f"./dexgraspnet_all.pickle", "wb") as openfile:
-    #     pickle.dump(out_dict, openfile)
+    with open(f"./dexgraspnet_all.pickle", "wb") as openfile:
+        pickle.dump(out_dict, openfile)
 
     return out_dict
 
@@ -488,7 +488,7 @@ class IsaacSim():
 
         self.sim = self.gym.create_sim(args.compute_device_id, args.graphics_device_id, args.physics_engine, sim_params)
 
-        self._read_train_data(self.data)
+        self._read_train_data()
         self._create_ground_plane()
         self._create_envs(self.num_envs, self.env_spacing, int(np.sqrt(self.num_envs)))
 
@@ -501,7 +501,7 @@ class IsaacSim():
         lower = gymapi.Vec3(-spacing, 0.75 * -spacing, 0.0)
         upper = gymapi.Vec3(spacing, 0.75 * spacing, spacing)
 
-        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../assets")
+        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../assets")
         asset_file_mano = "urdf/mano/zeros/mano_addtips.urdf"
         asset_file_ycb = f"urdf/ycb/{self.ycb_name}/{self.ycb_name}.urdf"
 
@@ -519,6 +519,7 @@ class IsaacSim():
         
         # create ycb asset
         asset_options = gymapi.AssetOptions()
+        asset_options.fix_base_link = True
         # asset_path_ycb = os.path.join(asset_root, asset_file_ycb)
         # asset_root_ycb = os.path.dirname(asset_path_ycb)
         # asset_file_ycb = os.path.basename(asset_path_ycb)
@@ -568,12 +569,12 @@ class IsaacSim():
             env_ptr = self.gym.create_env(self.sim, lower, upper, num_per_row)
             self.envs.append(env_ptr)
 
-            # create table and set properties
-            table_handle = self.gym.create_actor(env_ptr, table_asset, table_start_pose, "table", i, 1, 0) # 001
-            table_sim_index = self.gym.get_actor_index(env_ptr, table_handle, gymapi.DOMAIN_SIM)
-            self.table_indices.append(table_sim_index)
+            # # create table and set properties
+            # table_handle = self.gym.create_actor(env_ptr, table_asset, table_start_pose, "table", i, 1, 0) # 001
+            # table_sim_index = self.gym.get_actor_index(env_ptr, table_handle, gymapi.DOMAIN_SIM)
+            # self.table_indices.append(table_sim_index)
 
-            self.gym.set_rigid_body_color(env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(60, 33, 0) / 255)
+            # self.gym.set_rigid_body_color(env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(60, 33, 0) / 255)
             '''
             # error ???
             # self.gym.set_actor_rigid_shape_properties(env_ptr, table_handle, table_rb_shape_props)
@@ -594,7 +595,7 @@ class IsaacSim():
             self.ycb_masses.append(ycb_rb_props[0].mass)
             
             # create mano and set properties
-            mano_handle = self.gym.create_actor(env_ptr, mano_asset, handobj_start_pose, "mano", i, 4, 2) # 100
+            mano_handle = self.gym.create_actor(env_ptr, mano_asset, handobj_start_pose, "mano", i, 2, 2) # 100
             mano_sim_index = self.gym.get_actor_index(env_ptr, mano_handle, gymapi.DOMAIN_SIM)
             self.mano_indices.append(mano_sim_index)
 
@@ -605,28 +606,29 @@ class IsaacSim():
 
         self.ycb_masses = to_torch(self.ycb_masses, dtype=torch.float32, device=self.device)
 
-    def _read_train_data(self, data):
-        # self.good_data = [0, 2, 4, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20]
-        self.good_data = list(range(len(self.data)))
+    def _read_train_data(self):
+        self.data = self.data[0]
+        # self.good_data = list(range(len(self.data)))
+        self.good_data = list(range(100))
         self.data_num = len(self.good_data)
         self.num_envs = len(self.good_data)
-        self.data_hand_init = torch.from_numpy(np.array([data[i]["subgoal_1"]["hand_traj_reach"][0, 0] for i in self.good_data]))
-        self.data_hand_ref = torch.from_numpy(np.array([data[i]["subgoal_1"]["hand_ref_pose"][0, 0] for i in self.good_data]))
-        self.data_obj_init = torch.from_numpy(np.array([data[i]["subgoal_1"]["obj_init"] for i in self.good_data]))
-
-        # add table shift
-        self.data_hand_init[:, 2] += 0.5
-        self.data_hand_ref[:, 2] += 0.5
-        self.data_obj_init[:, 2] += 0.5
+        self.data_hand_init = torch.from_numpy(np.array([self.data[i]["hand_init_pose"][0, 0] for i in self.good_data]))
+        self.data_hand_ref = torch.from_numpy(np.array([self.data[i]["hand_ref_pose"][0, 0] for i in self.good_data]))
+        self.data_obj_init = torch.from_numpy(np.array([self.data[i]["obj_init"] for i in self.good_data]))
         
         # to torch
         self.data_hand_init = to_torch(self.data_hand_init, dtype=torch.float32, device=self.device)
         self.data_hand_ref = to_torch(self.data_hand_ref, dtype=torch.float32, device=self.device)
         self.data_obj_init = to_torch(self.data_obj_init, dtype=torch.float32, device=self.device)
 
+        # add table shift
+        self.data_hand_init[:, 2] += 0.5
+        self.data_hand_ref[:, 2] += 0.5
+        self.data_obj_init[:, 2] += 0.5
+
     def reset_idx(self):
         # reset hand root pose
-        hand_init_pose = torch.tile(self.data_hand_init, (self.num_envs // self.data_num, 1)).clone()
+        hand_ref_pose = torch.tile(self.data_hand_ref, (self.num_envs // self.data_num, 1)).clone()
 
         # self.root_state_tensor[self.mano_indices, 0:3] = hand_init_pose[:, 0:3]
         # self.root_state_tensor[self.mano_indices, 3:7] = euler_to_quat(hand_init_pose[:, 3:6], "XYZ")
@@ -637,10 +639,9 @@ class IsaacSim():
         #                                              gymtorch.unwrap_tensor(init_hand_indices), len(init_hand_indices))
 
         # reset hand pose
-        # hand_init_pose[:, :6] = 0
-        # self.dof_state[:, 0] = hand_init_pose.reshape(-1)
-        # self.gym.set_dof_state_tensor(self.sim, gymtorch.unwrap_tensor(self.dof_state))
-        # self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(hand_init_pose.reshape(-1)))
+        self.dof_state[:, 0] = hand_ref_pose.reshape(-1)
+        self.gym.set_dof_state_tensor(self.sim, gymtorch.unwrap_tensor(self.dof_state))
+        self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(hand_ref_pose.reshape(-1)))
 
         # reset object pose
         obj_init_pose = torch.tile(self.data_obj_init, (self.num_envs // self.data_num, 1)).clone()
@@ -665,8 +666,8 @@ class IsaacSim():
                 print('reset')
                 print()
 
-                new_obj_pose = self.root_state_tensor[self.ycb_indices, :7]
-                break
+                # new_obj_pose = self.root_state_tensor[self.ycb_indices, :7]
+                # break
 
                 self.reset_idx()
                 cnt = 0
@@ -677,32 +678,11 @@ class IsaacSim():
             self.gym.simulate(self.sim)
             self.gym.fetch_results(self.sim, True)
 
+            self.gym.refresh_dof_state_tensor(self.sim)
             self.gym.refresh_actor_root_state_tensor(self.sim)
+            self.gym.refresh_rigid_body_state_tensor(self.sim)
 
-            # print('-' * 10)
-            # print(self.root_state_tensor[self.ycb_indices, :7])
-            # print()
-
-            # process predicted actions
-            actions_tensor = torch.tile(self.data_hand_ref, (self.num_envs // self.data_num, 1))
-
-            tf_mat = pose7d_to_matrix(self.root_state_tensor[self.mano_indices, :7])
-            cur_wrist_mat = pose6d_to_matrix(actions_tensor[:, :6], "XYZ")
-            new_wrist_mat = torch.bmm(torch.linalg.inv(tf_mat), cur_wrist_mat)
-            new_wrist_tensor = matrix_to_pose_6d(new_wrist_mat, "XYZ")
-
-            actions_tensor[:, :6] = new_wrist_tensor
-
-            # set position target
-            # self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(actions_tensor))
-
-            # rigidbody_transforms = self.gym.get_actor_rigid_body_states(env0, mano_hand0, gymapi.STATE_ALL)[rigidbodyid_list]["pose"]["p"]
-            # rigidbody_pos = np.vstack([rigidbody_transforms["x"], rigidbody_transforms["y"], rigidbody_transforms["z"]]).T
-
-            # for i in range(rigidbody_pos.shape[0]):
-            #     body_states = self.gym.get_actor_rigid_body_states(env0, sphere_list[i], gymapi.STATE_ALL)
-            #     body_states["pose"]["p"] = tuple(rigidbody_pos[i])
-            #     self.gym.set_actor_rigid_body_states(env0, sphere_list[i], body_states, gymapi.STATE_ALL)
+            
 
             # update the viewer
             self.gym.step_graphics(self.sim)
@@ -713,33 +693,33 @@ class IsaacSim():
         self.gym.destroy_viewer(self.viewer)
         self.gym.destroy_sim(self.sim)
 
-        for cnt, i in enumerate(self.good_data):
-            tmp_pose = new_obj_pose[cnt].numpy().copy()
-            tmp_pose[2] -= 0.5
+        # for cnt, i in enumerate(self.good_data):
+        #     tmp_pose = new_obj_pose[cnt].numpy().copy()
+        #     tmp_pose[2] -= 0.5
 
-            self.data[i]["subgoal_1"]["obj_init"][:] = tmp_pose
+        #     self.data[i]["subgoal_1"]["obj_init"][:] = tmp_pose
 
-        # write file
-        with open(f"./{ycb_name}_ft.pickle", "wb") as openfile:
-            pickle.dump(self.data, openfile)
+        # # write file
+        # with open(f"./{ycb_name}_ft.pickle", "wb") as openfile:
+        #     pickle.dump(self.data, openfile)
 
 if __name__ == '__main__':
     root_dir = './DexGraspNet/demo_0416/results/*'
 
     out_dict = run(root_dir)
     
-    # # read file
-    # with open(f"./{ycb_name}.pickle", "rb") as openfile:
-    #     out_dict = pickle.load(openfile)
+    # read file
+    with open(f"./dexgraspnet_all.pickle", "rb") as openfile:
+        out_dict = pickle.load(openfile)
 
-    # print('-' * 20)
-    # print('Success dump the data pickle')
-    # print()
+    print('-' * 20)
+    print('Success dump the data pickle')
+    print()
 
-    # # visualize in isaac
-    # issac = IsaacSim(out_dict, ycb_name)
-    # issac.simulate()
+    # visualize in isaac
+    issac = IsaacSim(out_dict, None)
+    issac.simulate()
 
-    # print('-' * 20)
-    # print('Success dump the fine tune data pickle')
-    # print()
+    print('-' * 20)
+    print('Success dump the fine tune data pickle')
+    print()

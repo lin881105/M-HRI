@@ -1,4 +1,6 @@
 mano_pybullet/
 manopth/
 DexGraspNet/
-data/
+*.png
+*.npy
+./data

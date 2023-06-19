@@ -745,9 +745,6 @@ class ManoBlockAssembly():
         self.frame_count=0
         self.done = torch.zeros((self.num_envs),dtype=torch.long).to(self.device)
 
-        self.set_init_hand_pos
-
-
         # self.reset_idx()
         for _ in trange(2000):
             if ((self.viewer is None) or (not self.gym.query_viewer_has_closed(self.viewer))):          
