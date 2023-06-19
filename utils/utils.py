@@ -5,6 +5,8 @@ from isaacgym import gymutil
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import quaternion
+import torch
+import os
 
 
 def gymapi_transform2mat(transform):
@@ -96,6 +98,75 @@ def get_dense_waypoints(start_config : list or tuple or np.ndarray, end_config :
         ret.append(position7d)
 
 
+def slerp(q1, q2, t):
+    """Spherical linear interpolation for batches of quaternions."""
+    q1_norm = torch.norm(q1, dim=1, keepdim=True)
+    q2_norm = torch.norm(q2, dim=1, keepdim=True)
+
+    q1 = q1 / q1_norm  # Normalize quaternion
+    q2 = q2 / q2_norm
+
+    dot = torch.sum(q1 * q2, dim=1, keepdim=True)
+
+    q2 *= torch.sign(dot)  # Ensure shortest path
+    dot *= torch.sign(dot)
+
+    DOT_THRESHOLD = 0.9995
+    lerp_flag = dot > DOT_THRESHOLD
+
+    inv_sin_theta_0 = 1 / torch.sqrt(1 - dot * dot)
+    theta_0 = torch.acos(dot)
+    theta = theta_0 * t
+
+    s0 = torch.cos(theta) - dot * torch.sin(theta) * inv_sin_theta_0
+    s1 = torch.sin(theta) * inv_sin_theta_0
+    q_slerp = (s0 * q1 + s1 * q2)
+
+    # Perform lerp for close quaternions
+    q_lerp = (1 - t) * q1 + t * q2
+    q_lerp = q_lerp / torch.norm(q_lerp, dim=1, keepdim=True)
+
+    q_slerp = torch.where(lerp_flag, q_lerp, q_slerp)
+
+    return q_slerp
+def create_gif(img_root_pth):
+    import cv2
+    import imageio
+    import glob
+
+    rgb_pth_dict = {}
+    hand_rgb_pth_dict = {}
+
+
+    rgb_pth_dict = sorted(glob.glob(os.path.join(img_root_pth, 'rgb','side', '*.png')))
+    hand_rgb_pth_dict = sorted(glob.glob(os.path.join(img_root_pth, 'hand_rgb', '*.png')))
+
+
+
+    hand_img_array = []
+    robot_img_array = []
+
+    # for frame in range(len(hand_rgb_pth_dict)):
+    #     if frame%skip == 0:
+    #         delete.append(frame)
+    # del hand_rgb_pth_dict[delete]
+
+
+    for rgb_pth, hand_rgb_pth in zip(rgb_pth_dict, hand_rgb_pth_dict):
+        rgb = cv2.imread(rgb_pth)
+        rgb = cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
+        
+        hand_rgb = cv2.imread(hand_rgb_pth)
+        hand_rgb = cv2.cvtColor(hand_rgb,cv2.COLOR_RGB2BGR)
+
+        
+        hand_img_array.append(hand_rgb)
+        robot_img_array.append(rgb)
+
+
+    # img_array_dict[camera_id] = img_array
+    imageio.mimsave(os.path.join(img_root_pth,'hand.gif'),hand_img_array,fps=5)
+    imageio.mimsave(os.path.join(img_root_pth,'robot.gif'),robot_img_array,fps=5)
 
 if __name__ == "__main__":
     goal_A_pose_1 = gymapi.Transform()
@@ -108,3 +179,7 @@ if __name__ == "__main__":
 
     print(trans.r.w)
     print(goal_A_pose_1.r.w)
+
+
+
+

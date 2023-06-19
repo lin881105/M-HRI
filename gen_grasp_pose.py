@@ -25,7 +25,7 @@ import random
 import time
 from utils import utils
 import scipy.io as sio
-import goal_data
+import goal.block_assembly.goal_data as goal_data
 
 
 def quat_axis(q, axis=0):
@@ -341,17 +341,7 @@ block_height = task.block_height
 
 
 block_indices = to_torch(create_block_actor(gym,env,goal,goal_pose,i),dtype=torch.long,device = device)
-# block_list = []
-# block_pose_world = []
 
-# for j, idx in enumerate(goal):
-#     block_pose = utils.multiply_gymapi_transform(region_pose, utils.mat2gymapi_transform(goal_pose[j]))
-#     block_handle = gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i)
-#     color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
-#     gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
-
-#     block_pose_world.append(block_pose)
-#     block_list.append(block_handle)
 
         
 # add franka
@@ -535,6 +525,8 @@ while viewer is None or not gym.query_viewer_has_closed(viewer):
     gym.set_dof_position_target_tensor(sim, gymtorch.unwrap_tensor(pos_action))
 
 
+
+    # print(root_state_tensor[4,3:7])
 
     # update viewer
     gym.step_graphics(sim)

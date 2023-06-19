@@ -70,10 +70,12 @@ class ManoBlockAssembly():
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor).view(self.num_envs, self.num_mano_dofs, 2)
 
-        self.set_init_hand_pos()
+        
 
         actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
         self.root_state_tensor = gymtorch.wrap_tensor(actor_root_state_tensor).view(-1, 13)
+        
+        self.set_init_hand_pos()
 
         self.stage = torch.zeros((self.num_envs),dtype=torch.long).to(self.device)
         # self.stage = 0
@@ -218,7 +220,7 @@ class ManoBlockAssembly():
         self.num_mano_dofs = self.gym.get_asset_dof_count(mano_asset)
         
         # create table asset
-        table_dims = gymapi.Vec3(0.3, 0.5, 0.4)
+        table_dims = gymapi.Vec3(0.4, 0.6, 0.4)
         asset_options = gymapi.AssetOptions()
         asset_options.fix_base_link = True
         table_asset = self.gym.create_box(self.sim, table_dims.x, table_dims.y, table_dims.z, asset_options)
@@ -234,6 +236,7 @@ class ManoBlockAssembly():
         asset_options = gymapi.AssetOptions()
         asset_options.armature = 0.01
         asset_options.fix_base_link = True
+        # asset_options.flip_visual_attachments=True
         block_type = ['A.urdf', 'B.urdf', 'C.urdf', 'D.urdf', 'E.urdf']
         for t in block_type:
             block_asset_list.append(self.gym.load_asset(self.sim, asset_root, 'urdf/block_assembly/block_' + t, asset_options))
@@ -301,7 +304,7 @@ class ManoBlockAssembly():
             region_pose.p.x = table_pose.p.x + self.region_xy[i][0]
             region_pose.p.y = table_pose.p.y + self.region_xy[i][1]
             region_pose.p.z = table_dims.z #+ 0.001
-            region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi/4, math.pi/4))
+            region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi/2, math.pi/2))
 
             region_handle = self.gym.create_actor(env_ptr, region_asset, region_pose, "target", i, 1, 1) # 001
             self.gym.set_rigid_body_color(env_ptr, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0., 0., 0.))
@@ -317,12 +320,12 @@ class ManoBlockAssembly():
 
 
              
-                angle = np.random.uniform(-math.pi, math.pi)
+                angle = np.random.uniform(-math.pi/4, math.pi/4)
                 r1 = R.from_euler('z', angle)
                 r2 = R.from_matrix(self.goal_pose[cnt][:3,:3])
-                # rot = r1 * r2
-                # euler = rot.as_euler("xyz", degrees=False)
+                rot = r1 * r2
                 euler = r2.as_euler("xyz", degrees=False)
+                # euler = rot.as_euler("xyz", degrees=False)
 
                 block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
             
@@ -424,10 +427,10 @@ class ManoBlockAssembly():
     
     def _write_images(self):
 
-        for i,idx in enumerate(self.success_envs):
-                img_rgb_pth = self.img_pth_rgb.format(str(idx).zfill(5))
-                img_depth_pth = self.img_pth_depth.format(str(idx).zfill(5))
-                img_semantic_pth = self.img_pth_semantic.format(str(idx).zfill(5))
+        for i in range(self.num_envs):
+                img_rgb_pth = self.img_pth_rgb.format(str(i).zfill(5))
+                img_depth_pth = self.img_pth_depth.format(str(i).zfill(5))
+                img_semantic_pth = self.img_pth_semantic.format(str(i).zfill(5))
 
                 frame_id_str = str(self.frame_count//10).zfill(5)
 
@@ -471,7 +474,7 @@ class ManoBlockAssembly():
                                                 gymtorch.unwrap_tensor(target),
                                                 gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
    
-    def set_hand_pos(self,new_wrist_mat,idx):
+    def set_hand_prepick_pos(self,new_wrist_mat,idx):
 
         new_dof_state = self.dof_state.clone()
         # print(idx[0])
@@ -479,12 +482,23 @@ class ManoBlockAssembly():
         # exit()
   
         new_dof_state[idx[0], 0:3, 0] = new_wrist_mat[:, :3, 3]
-        new_dof_state[idx[0], 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
+        new_wrist_rot = pytorch3d.transforms.matrix_to_quaternion(new_wrist_mat[:,:3,:3])
+        current_wrist_rot = pytorch3d.transforms.euler_angles_to_matrix(self.dof_state[idx[0],3:6,0],"XYZ")
+        current_wrist_rot = pytorch3d.transforms.matrix_to_quaternion(current_wrist_rot)
+        # new_dof_state[idx[0], 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
         new_dof_state[idx[0],6:,0] = self.hand_goal_pose[self.stage[idx]//6,0,0,6:]
         # print(self.dof_state[:, :, 0])
 
-        self.dof_state[:,0:6,0] = self.dof_state[:,0:6,0] + (new_dof_state[:,0:6,0] - self.dof_state[:,0:6,0])*0.04
+
+
+        self.dof_state[:,0:3,0] = self.dof_state[:,0:3,0] + (new_dof_state[:,0:3,0] - self.dof_state[:,0:3,0])*0.04
+        # self.dof_state[:,3:6,0] = self.dof_state[:,3:6,0] + pytorch3d.transforms.matrix_to_euler_angles(pytorch3d.transforms.quaternion_to_matrix((new_wrist_rot-current_wrist_rot)*0.04),"XYZ")
+        self.dof_state[idx[0],3:6,0] = pytorch3d.transforms.matrix_to_euler_angles(pytorch3d.transforms.quaternion_to_matrix(utils.slerp(current_wrist_rot,new_wrist_rot,0.02)),"XYZ")
+
         self.dof_state[:,6:,0] = self.dof_state[:,6:,0] + (new_dof_state[:,6:,0] - self.dof_state[:,6:,0])*0.02
+        # self.dof_state[reset,6:,0] = self.dof_state[reset,6:,0] + (0 - self.dof_state[reset,6:,0])*0.02
+
+
 
         
         dof_indices = self.mano_indices.to(dtype=torch.int32)
@@ -500,6 +514,81 @@ class ManoBlockAssembly():
         
         return new_dof_state
     
+    def set_hand_pick_pos(self,new_wrist_mat,idx):
+
+        new_dof_state = self.dof_state.clone()
+        # print(idx[0])
+        # print(new_wrist_mat.shape)
+        # exit()
+  
+        new_dof_state[idx[0], 0:3, 0] = new_wrist_mat[:, :3, 3]
+        new_wrist_rot = pytorch3d.transforms.matrix_to_quaternion(new_wrist_mat[:,:3,:3])
+        current_wrist_rot = pytorch3d.transforms.euler_angles_to_matrix(self.dof_state[idx[0],3:6,0],"XYZ")
+        current_wrist_rot = pytorch3d.transforms.matrix_to_quaternion(current_wrist_rot)
+        # new_dof_state[idx[0], 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
+        new_dof_state[idx[0],6:,0] = self.hand_goal_pose[self.stage[idx]//6,0,0,6:]
+        # print(self.dof_state[:, :, 0])
+
+
+
+        self.dof_state[:,0:3,0] = self.dof_state[:,0:3,0] + (new_dof_state[:,0:3,0] - self.dof_state[:,0:3,0])*0.04
+        # self.dof_state[:,3:6,0] = self.dof_state[:,3:6,0] + pytorch3d.transforms.matrix_to_euler_angles(pytorch3d.transforms.quaternion_to_matrix((new_wrist_rot-current_wrist_rot)*0.04),"XYZ")
+        self.dof_state[idx[0],3:6,0] = pytorch3d.transforms.matrix_to_euler_angles(pytorch3d.transforms.quaternion_to_matrix(utils.slerp(current_wrist_rot,new_wrist_rot,0.02)),"XYZ")
+
+        # self.dof_state[reset,6:,0] = self.dof_state[reset,6:,0] + (0 - self.dof_state[:,6:,0])*0.02
+        self.dof_state[:,6:,0] = self.dof_state[:,6:,0] + (new_dof_state[:,6:,0] - self.dof_state[:,6:,0])*0.02
+
+        
+        dof_indices = self.mano_indices.to(dtype=torch.int32)
+        # print(dof_indices.shape)
+        self.gym.set_dof_state_tensor_indexed(self.sim,
+                                        gymtorch.unwrap_tensor(self.dof_state),
+                                        gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        
+        target = self.dof_state[:, :, 0].clone()
+        self.gym.set_dof_position_target_tensor_indexed(self.sim,
+                                                gymtorch.unwrap_tensor(target),
+                                                gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        
+        return new_dof_state
+
+    def set_hand_placed_pos(self,new_wrist_mat,idx):
+
+        new_dof_state = self.dof_state.clone()
+        # print(idx[0])
+        # print(new_wrist_mat.shape)
+        # exit()
+  
+        new_dof_state[idx[0], 0:3, 0] = new_wrist_mat[:, :3, 3]
+        new_wrist_rot = pytorch3d.transforms.matrix_to_quaternion(new_wrist_mat[:,:3,:3])
+        current_wrist_rot = pytorch3d.transforms.euler_angles_to_matrix(self.dof_state[idx[0],3:6,0],"XYZ")
+        current_wrist_rot = pytorch3d.transforms.matrix_to_quaternion(current_wrist_rot)
+        # new_dof_state[idx[0], 3:6, 0] = pytorch3d.transforms.matrix_to_euler_angles(new_wrist_mat[:, :3, :3], "XYZ")
+        # print(self.dof_state[:, :, 0])
+
+
+
+        self.dof_state[:,0:3,0] = self.dof_state[:,0:3,0] + (new_dof_state[:,0:3,0] - self.dof_state[:,0:3,0])*0.04
+        # self.dof_state[:,3:6,0] = self.dof_state[:,3:6,0] + pytorch3d.transforms.matrix_to_euler_angles(pytorch3d.transforms.quaternion_to_matrix((new_wrist_rot-current_wrist_rot)*0.04),"XYZ")
+        self.dof_state[idx[0],3:6,0] = pytorch3d.transforms.matrix_to_euler_angles(pytorch3d.transforms.quaternion_to_matrix(utils.slerp(current_wrist_rot,new_wrist_rot,0.02)),"XYZ")
+
+        # self.dof_state[reset,6:,0] = self.dof_state[reset,6:,0] + (0 - self.dof_state[:,6:,0])*0.02
+        self.dof_state[:,6:,0] = self.dof_state[:,6:,0] + (0 - self.dof_state[:,6:,0])*0.002
+
+        
+        dof_indices = self.mano_indices.to(dtype=torch.int32)
+        # print(dof_indices.shape)
+        self.gym.set_dof_state_tensor_indexed(self.sim,
+                                        gymtorch.unwrap_tensor(self.dof_state),
+                                        gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        
+        target = self.dof_state[:, :, 0].clone()
+        self.gym.set_dof_position_target_tensor_indexed(self.sim,
+                                                gymtorch.unwrap_tensor(target),
+                                                gymtorch.unwrap_tensor(dof_indices), len(dof_indices))
+        
+        return new_dof_state
+
         
     def set_hand_object_pos(self,idx):
     
@@ -514,7 +603,10 @@ class ManoBlockAssembly():
         target_block_pose = self.block_goal_list[idx[0],self.stage[idx],:].clone()
         
 
-        self.root_state_tensor[self.block_indices[idx[0],self.stage[idx]//6], :7] += (target_block_pose[:,:7] - curr_block_pose[:,:7])*0.02
+        # self.root_state_tensor[self.block_indices[idx[0],self.stage[idx]//6], :7] += (target_block_pose[:,:7] - curr_block_pose[:,:7])*0.02
+        self.root_state_tensor[self.block_indices[idx[0],self.stage[idx]//6], :3] += (target_block_pose[:,:3] - curr_block_pose[:,:3])*0.02
+        self.root_state_tensor[self.block_indices[idx[0],self.stage[idx]//6], 3:7] = utils.slerp(curr_block_pose[:,3:7],target_block_pose[:,3:7],0.02)
+        
         # print(target_block_pose[:,3:7].shape)
         # print(curr_block_pose[:,3:7].shape)
         # print(self.root_state_tensor[self.block_indices[idx[0],self.stage[idx]//6], 3:7].shape)
@@ -592,6 +684,8 @@ class ManoBlockAssembly():
         # print(self.dof_state[:,:6,0].shape)
         # print(new_dof_state[:,:6,0].shape)
         diff = torch.norm(self.dof_state[:,:6,0]-new_dof_state[:,:6,0],dim=1)
+        # hand_pose_diff = torch.norm(self.dof_state[:,6:,0]-new_dof_state[:,6:,0],dim=1)
+        # print(hand_pose_diff)
         # print(diff.shape)
         # print(threshold.shape)
         # exit()
@@ -600,9 +694,19 @@ class ManoBlockAssembly():
         # else:
         #     return False
         return torch.logical_and(torch.where(diff<threshold,True,False),idx)
+    
+
+    def check_hand_pose_reach(self,new_dof_state,threshold,idx):
+        diff = torch.norm(self.dof_state[:,:6,0]-new_dof_state[:,:6,0],dim=1)
+        hand_pose_diff = torch.norm(self.dof_state[:,6:,0]-new_dof_state[:,6:,0],dim=1)
+        # print(hand_pose_diff)
+        return torch.logical_and(torch.logical_and(torch.where(diff<threshold,True,False),torch.where(hand_pose_diff<threshold,True,False)),idx)
+
+
+
         
     def reset_grasp_pose(self,envs):
-        self.dof_state[envs,6:,0] = self.dof_state[envs,6:,0] + (0 - self.dof_state[envs,6:,0])*0.005
+        self.dof_state[envs,6:,0] = self.dof_state[envs,6:,0] + (0 - self.dof_state[envs,6:,0])*0.01
         
         dof_indices = self.mano_indices.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
@@ -628,23 +732,30 @@ class ManoBlockAssembly():
         set_object = torch.logical_or(torch.where(self.stage%6==2,True,False),torch.where(self.stage%6==3,True,False)).to(self.device)
         set_object = torch.logical_or(set_object, torch.where(self.stage%6==4,True,False))
 
+        set_hand_prepick = torch.where(self.stage%6==0,True,False).to(self.device)
+
+        set_hand_pick = torch.where(self.stage%6==1,True,False).to(self.device)
+
+        set_hand_placed = torch.where(self.stage%6==5,True,False).to(self.device)
+
         # if self.stage%6 == 4:
         #     block_threshold = 0.01
         # else:
         #     block_threshold = 0.1
-        block_threshold = torch.where(self.stage%6==4,0.005,0.05).to(self.device)
+        block_threshold = torch.where(self.stage%6==4,0.01,0.1).to(self.device)
         
         # if self.stage%6 == 1:
         #     threshold = 0.005
         # else:
         #     threshold = 0.1
-        threshold = torch.where(self.stage%6==1,0.005,0.05).to(self.device)
+        threshold = torch.logical_or(torch.where(self.stage%6==1,True,False),torch.where(self.stage%6==5,True,False))
+        threshold = torch.where(threshold,0.01,0.05).to(self.device)
 
         # if self.stage%6 == 5:
         #     self.reset_grasp_pose()
-        reset_idx = torch.where(self.stage%6==5,True,False).to(self.device)
+        # reset_idx = torch.where(self.stage%6==5,True,False).to(self.device)
         
-        self.reset_grasp_pose(reset_idx)
+        # self.reset_grasp_pose(reset_idx)
 
 
         # if not set_object:
@@ -660,16 +771,30 @@ class ManoBlockAssembly():
     
         #     if self.check_hand_pos_reach(new_target_dof,threshold):
         #         self.stage+=1
-        
 
 
-        _idx = torch.logical_not(set_object)
-        _idx = torch.logical_and(_idx,torch.logical_not(self.done))
+        _idx = torch.logical_and(set_hand_prepick,torch.logical_not(self.done))
 
         idx = torch.where(_idx)
 
+        if idx[0].shape[0]>0:
+            # print(self.stage[idx])
+            goal_pose = self.block_goal_list[idx[0],self.stage[idx],:]
+            curr_obj_mat = torch.eye(4).unsqueeze(0).repeat(idx[0].shape[0],1,1).to(self.device)
+            curr_obj_mat[:,:3,3] = goal_pose[:,:3]
+            curr_obj_mat[:,:3,:3] = pytorch3d.transforms.quaternion_to_matrix(goal_pose[:,[6,3,4,5]])
+            target_hand_pose = curr_obj_mat @ self.hand_rel_mat[self.stage[idx]//6]
+            new_target_dof = self.set_hand_prepick_pos(target_hand_pose,idx)
+            _reach = self.check_hand_pos_reach(new_target_dof,threshold,_idx)
+            self.stage[_reach]+=1
 
-       
+        
+
+
+        # _idx = torch.logical_not(set_object)
+        _idx = torch.logical_and(set_hand_pick,torch.logical_not(self.done))
+
+        idx = torch.where(_idx)
         
         if idx[0].shape[0]>0:
             # print(self.stage[idx])
@@ -678,13 +803,30 @@ class ManoBlockAssembly():
             curr_obj_mat[:,:3,3] = goal_pose[:,:3]
             curr_obj_mat[:,:3,:3] = pytorch3d.transforms.quaternion_to_matrix(goal_pose[:,[6,3,4,5]])
             target_hand_pose = curr_obj_mat @ self.hand_rel_mat[self.stage[idx]//6]
-            new_target_dof = self.set_hand_pos(target_hand_pose,idx)
-            _reach = self.check_hand_pos_reach(new_target_dof,threshold,_idx)
+            new_target_dof = self.set_hand_pick_pos(target_hand_pose,idx)
+            # _reach = self.check_hand_pos_reach(new_target_dof,threshold,_idx)
+            _hand_pose_reach = self.check_hand_pose_reach(new_target_dof,threshold,_idx)
 
-
-            self.stage[_reach]+=1
+            self.stage[_hand_pose_reach]+=1
 
         ###############################################################################################
+
+        _idx = torch.logical_and(set_hand_placed,torch.logical_not(self.done))
+
+        idx = torch.where(_idx)
+        
+        if idx[0].shape[0]>0:
+            # print(self.stage[idx])
+            goal_pose = self.block_goal_list[idx[0],self.stage[idx],:]
+            curr_obj_mat = torch.eye(4).unsqueeze(0).repeat(idx[0].shape[0],1,1).to(self.device)
+            curr_obj_mat[:,:3,3] = goal_pose[:,:3]
+            curr_obj_mat[:,:3,:3] = pytorch3d.transforms.quaternion_to_matrix(goal_pose[:,[6,3,4,5]])
+            target_hand_pose = curr_obj_mat @ self.hand_rel_mat[self.stage[idx]//6]
+            new_target_dof = self.set_hand_placed_pos(target_hand_pose,idx)
+            # _reach = self.check_hand_pos_reach(new_target_dof,threshold,_idx)
+            _reach = self.check_hand_pos_reach(new_target_dof,threshold,_idx)
+
+            self.stage[_reach]+=1
 
         idx = torch.where(torch.logical_and(set_object,torch.logical_not(self.done)))
 
@@ -698,7 +840,7 @@ class ManoBlockAssembly():
 
             target_hand_pose = cur_obj_mat @ self.hand_rel_mat[self.stage[idx]//6]
 
-            new_target_dof = self.set_hand_pos(target_hand_pose,idx)
+            new_target_dof = self.set_hand_pick_pos(target_hand_pose,idx)
 
             _reach = self.check_block_pos_reach(target_block_pose,block_threshold,set_object)
             # print(_reach)
@@ -706,8 +848,7 @@ class ManoBlockAssembly():
 
             self.stage[_reach]+=1
 
-        self.done = torch.where(self.stage==self.block_goal_list.shape[1],True,False)
-
+        self.done = torch.where(self.stage==self.block_goal_list.shape[1]-1,True,False)
 
         
         # else:
@@ -732,6 +873,8 @@ class ManoBlockAssembly():
         torch.set_printoptions(sci_mode=False)
         self.frame_count=0
         self.done = torch.zeros((self.num_envs),dtype=torch.long).to(self.device)
+
+        self.reset_counter = torch.zeros((self.num_envs),dtype=torch.long).to(self.device)
 
 
         # self.reset_idx()

@@ -3,7 +3,7 @@ import cv2
 import glob
 import numpy as np
 
-img_root_pth = 'data/goal_1/2023-05-23-11-52-24/env_00004'
+img_root_pth = 'data/goal_3/2023-06-01-17-10-42/env_00004'
 
 rgb_pth_dict = {}
 hand_rgb_pth_dict = {}
@@ -53,9 +53,6 @@ for img in img_array:
 out.release()
 
 
-'''
-stack 8-view rgb video together
-'''
 # out = cv2.VideoWriter(f'./demo_video/rgb_depth/all.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 15, (640, 480 * 2))
 # num_frame = 148
 

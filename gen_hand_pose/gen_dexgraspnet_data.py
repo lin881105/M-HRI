@@ -388,13 +388,13 @@ def run(root_dir):
             hand_grasp_pose = mano_to_handoversim(grasp_theta.copy())
             
             # output to pickle dict
-            out_dict[type_id][data_id]["obj_init"] = block_pose
-            out_dict[type_id][data_id]["obj_grasp"] = block_pose
+            out_dict[type_id][data_id]["obj_init"] = block_pose.copy()
+            out_dict[type_id][data_id]["obj_grasp"] = block_pose.copy()
             
-            out_dict[type_id][data_id]["hand_init_pose"] = hand_init_pose
-            out_dict[type_id][data_id]["hand_ref_pose"] = hand_grasp_pose
-            out_dict[type_id][data_id]["hand_ref_position"] = final_ee
-            out_dict[type_id][data_id]["hand_contact"] = target_contacts
+            out_dict[type_id][data_id]["hand_init_pose"] = hand_init_pose.copy()
+            out_dict[type_id][data_id]["hand_ref_pose"] = hand_grasp_pose.copy()
+            out_dict[type_id][data_id]["hand_ref_position"] = final_ee.copy()
+            out_dict[type_id][data_id]["hand_contact"] = target_contacts.copy()
     
     # write file
     with open(f"./dexgraspnet_all.pickle", "wb") as openfile:

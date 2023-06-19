@@ -8,7 +8,6 @@ import datetime
 import math
 import numpy as np
 import torch
-import random
 import time
 import scipy.io as sio
 from utils import utils
@@ -16,9 +15,9 @@ from scipy.spatial.transform import Rotation as R
 import shutil
 from tqdm import trange
 import scipy.io as sio
-from mano_block_assembly import ManoBlockAssembly
 
 
+<<<<<<< HEAD:franka_block_assembly.py
 custom_parameters = [
     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
     {"name": "--headless", "action": "store_true", "help": "Run headless"},
@@ -30,16 +29,29 @@ args = gymutil.parse_arguments(
     description="Franka block assembly demonstration",
     custom_parameters=custom_parameters,
 )
+=======
+# custom_parameters = [
+#     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
+#     {"name": "--headless", "action": "store_true", "help": "Run headless"},
+#     {"name": "--goal", "type": str, "default":'1',"help": ""},
+#     {"name": "--save", "action": "store_true"},
+# ]
+# self.args = gymutil.parse_arguments(
+#     description="Franka block assembly demonstration",
+#     custom_parameters=custom_parameters,
+# )
+>>>>>>> 9c0ec4db94560ad27f3be94e677aa41201cb5aaa:task/franka_block_assembly.py
 
 
 
 class FrankaBlockAssembly():
 
-    def __init__(self):
+    def __init__(self,args):
         
         # initialize gym
+        self.args = args
         self.gym = gymapi.acquire_gym()
-        self.num_envs = args.num_envs
+        self.num_envs = self.args.num_envs
         
         # IK params
         self.damping = 0.05
@@ -66,7 +78,7 @@ class FrankaBlockAssembly():
     
     def create_sim(self):
         # set torch device
-        self.device = args.sim_device if args.use_gpu_pipeline else 'cpu'
+        self.device = self.args.sim_device if self.args.use_gpu_pipeline else 'cpu'
 
         # configure sim
         sim_params = gymapi.SimParams()
@@ -74,8 +86,8 @@ class FrankaBlockAssembly():
         sim_params.gravity = gymapi.Vec3(0.0, 0.0, -9.8)
         sim_params.dt = 1.0 / 60.0
         sim_params.substeps = 2
-        sim_params.use_gpu_pipeline = args.use_gpu_pipeline
-        if args.physics_engine == gymapi.SIM_PHYSX:
+        sim_params.use_gpu_pipeline = self.args.use_gpu_pipeline
+        if self.args.physics_engine == gymapi.SIM_PHYSX:
             sim_params.physx.solver_type = 1
             sim_params.physx.num_position_iterations = 8
             sim_params.physx.num_velocity_iterations = 1
@@ -83,17 +95,17 @@ class FrankaBlockAssembly():
             sim_params.physx.contact_offset = 0.001
             sim_params.physx.friction_offset_threshold = 0.001
             sim_params.physx.friction_correlation_distance = 0.0005
-            sim_params.physx.num_threads = args.num_threads
-            sim_params.physx.use_gpu = args.use_gpu
+            sim_params.physx.num_threads = self.args.num_threads
+            sim_params.physx.use_gpu = self.args.use_gpu
         else:
             raise Exception("This example can only be used with PhysX")
         # create sim
-        self.sim = self.gym.create_sim(args.compute_device_id, args.graphics_device_id, args.physics_engine, sim_params)
+        self.sim = self.gym.create_sim(self.args.compute_device_id, self.args.graphics_device_id, self.args.physics_engine, sim_params)
         if self.sim is None:
             raise Exception("Failed to create sim")
 
         # create viewer
-        use_viewer = not args.headless
+        use_viewer = not self.args.headless
         if use_viewer:
             self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
             if self.viewer is None:
@@ -198,6 +210,7 @@ class FrankaBlockAssembly():
         self.hand_handle_list = []
         self.region_init_pose_list = []
         self.block_init_pose_list = [[] for _ in range(self.num_envs)]
+        self.block_color = [[] for _ in range(self.num_envs)]
 
         for i in range(self.num_envs):
 
@@ -250,13 +263,14 @@ class FrankaBlockAssembly():
 
                 self.block_init_pose_list[i].append(np.array((block_pose.p.x,block_pose.p.y,block_pose.p.z,
                                                              block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)))
+                self.block_color[i].append(color)
             
             # init_pose = {
             #     "block_init_pose_world":block_init_pose_list,
             #     "region_init_pose_world":region_init_pose,
             # }
 
-            # sio.savemat(f"data/goal_{args.goal}/{self.time_str}/env_{str(i).zfill(5)}/init_pose.mat",init_pose)
+            # sio.savemat(f"data/goal_{self.args.goal}/{self.time_str}/env_{str(i).zfill(5)}/init_pose.mat",init_pose)
 
 
             # # get global index of box in rigid body state tensor
@@ -314,7 +328,7 @@ class FrankaBlockAssembly():
         self.pos_action = torch.zeros_like(self.dof_pos).squeeze(-1)
     
     def load_goal_data(self):
-        mat_file = f"goal/block_assembly/goal_data/goal_{args.goal}_data.mat"
+        mat_file = f"goal/block_assembly/goal_data/goal_{self.args.goal}_data.mat"
         mat_dict = sio.loadmat(mat_file)
 
         self.goal_list = mat_dict["block_list"][0]
@@ -496,9 +510,9 @@ class FrankaBlockAssembly():
         self.time_str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         
         # create root path
-        # os.makedirs(os.path.join('data',f'goal_{args.goal}',exist_ok=True))
-        os.makedirs(os.path.join('data', f'goal_{args.goal}',self.time_str),exist_ok=True)
-        self.img_pth_root = os.path.join('data', f'goal_{args.goal}',self.time_str)
+        # os.makedirs(os.path.join('data',f'goal_{self.args.goal}',exist_ok=True))
+        os.makedirs(os.path.join('data', f'goal_{self.args.goal}',self.time_str),exist_ok=True)
+        self.img_pth_root = os.path.join('data', f'goal_{self.args.goal}',self.time_str)
         env_pth = os.path.join(self.img_pth_root, 'env_{}')
         
         # create path for each envs
@@ -539,7 +553,7 @@ class FrankaBlockAssembly():
     def _write_images(self):
 
         for i in range(self.num_envs):
-            if self.done_counter[i]<30:
+            if self.done_counter[i]<50:
                 side_rgb_pth = self.side_img_pth_rgb.format(str(i).zfill(5))
                 side_depth_pth = self.side_img_pth_depth.format(str(i).zfill(5))
                 side_semantic_pth = self.side_img_pth_semantic.format(str(i).zfill(5))
@@ -807,7 +821,7 @@ class FrankaBlockAssembly():
                 _done_count = torch.where(self.reward>0.99,True,False)
                 self.done_counter[_done_count] += 1
 
-                if args.save:
+                if self.args.save:
                     if self.frame_count % 10 == 0 and self.frame_count != 0:
                         self._write_images()
 
@@ -827,18 +841,30 @@ class FrankaBlockAssembly():
 
         for i in range(self.num_envs):
             if self.reward[i]<0.99:
-                shutil.rmtree(f'data/goal_{args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
+                shutil.rmtree(f'data/goal_{self.args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
             else:
                 success_env.append(i)
         
-        return success_env, self.region_init_pose_list, self.block_init_pose_list,self.img_pth_root
+        info = {
+            "success_envs":success_env,
+            "region_init_pose":self.region_init_pose_list,
+            "block_init_pose":self.block_init_pose_list,
+            "block_color":self.block_color,
+            "img_pth":self.img_pth_root,
+        }
+        
+        # return success_env, self.region_init_pose_list, self.block_init_pose_list,self.block_color,self.img_pth_root
+        return info
 
 
-if __name__ == "__main__":
-    issac = FrankaBlockAssembly()
-    success_envs,region,block,img_pth=issac.simulate()
 
+
+
+<<<<<<< HEAD:franka_block_assembly.py
     if args.mano:
         mano = ManoBlockAssembly(success_envs,block,region,img_pth,args)
         mano.simulate()
         
+=======
+    
+>>>>>>> 9c0ec4db94560ad27f3be94e677aa41201cb5aaa:task/franka_block_assembly.py

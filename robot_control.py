@@ -165,7 +165,7 @@ gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_SPACE, "gripper_close")
 gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_TAB, "gripper_open")
 
 
-asset_root = "../../assets"
+asset_root = "assets"
 
 # create table asset
 table_dims = gymapi.Vec3(0.6, 1.0, 0.4)
@@ -174,9 +174,24 @@ asset_options.fix_base_link = True
 table_asset = gym.create_box(sim, table_dims.x, table_dims.y, table_dims.z, asset_options)
 
 # create box asset
-box_size = 0.045
+# box_size = 0.045
+# asset_options = gymapi.AssetOptions()
+# box_asset = gym.create_box(sim, box_size, box_size, box_size, asset_options)
+peg_asset_file = "urdf/peg_insertion/triangle.urdf"
 asset_options = gymapi.AssetOptions()
-box_asset = gym.create_box(sim, box_size, box_size, box_size, asset_options)
+asset_options.armature = 0.01
+asset_options.fix_base_link = True
+# asset_options.disable_gravity = True
+# asset_options.flip_visual_attachments = True
+peg_asset = gym.load_asset(sim, asset_root, peg_asset_file, asset_options)
+
+kit_asset_file = "urdf/peg_insertion/triangle_kit.urdf"
+asset_options = gymapi.AssetOptions()
+asset_options.armature = 0.01
+asset_options.fix_base_link = True
+# asset_options.disable_gravity = True
+# asset_options.flip_visual_attachments = True
+kit_asset = gym.load_asset(sim, asset_root, kit_asset_file, asset_options)
 
 # load franka asset
 franka_asset_file = "urdf/franka_description/robots/franka_panda.urdf"
@@ -239,10 +254,12 @@ franka_pose.p = gymapi.Vec3(0, 0, 0)
 table_pose = gymapi.Transform()
 table_pose.p = gymapi.Vec3(0.5, 0.0, 0.5 * table_dims.z)
 
-box_pose = gymapi.Transform()
+peg_pose = gymapi.Transform()
+kit_pose = gymapi.Transform()
 
 envs = []
-box_idxs = []
+peg_idxs = []
+kit_idxs = []
 hand_idxs = []
 init_pos_list = []
 init_rot_list = []
@@ -260,21 +277,29 @@ for i in range(num_envs):
     # add table
     table_handle = gym.create_actor(env, table_asset, table_pose, "table", i, 0)
 
-    # add box
-    box_pose.p.x = table_pose.p.x + np.random.uniform(-0.2, 0.1)
-    box_pose.p.y = table_pose.p.y + np.random.uniform(-0.3, 0.3)
-    box_pose.p.z = table_dims.z + 0.5 * box_size
-    box_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 1, 1), np.random.uniform(-math.pi, math.pi))
+    # add peg
+    peg_pose.p.x = table_pose.p.x + np.random.uniform(-0.1, 0.1)
+    peg_pose.p.y = table_pose.p.y + np.random.uniform(-0.2, 0.2)
+    peg_pose.p.z = table_dims.z + 0.05
+    peg_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
     # box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0)
     # color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
     # gym.set_rigid_body_color(env, box_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+    rope_handle = gym.create_actor(env , peg_asset, peg_pose, "box", i, 1)
+    peg_idx = gym.get_actor_rigid_body_index(env, rope_handle, 0, gymapi.DOMAIN_SIM)
+    peg_idxs.append(peg_idx)
 
-    # get global index of box in rigid body state tensor
-   
-    # add rope
-    rope_handle = gym.create_actor(env , box_asset, box_pose, "box", i, 1)
-    box_idx = gym.get_actor_rigid_body_index(env, rope_handle, 0, gymapi.DOMAIN_SIM)
-    box_idxs.append(box_idx)
+    # add kit
+    kit_pose.p.x = table_pose.p.x + np.random.uniform(-0.1, 0.1)
+    kit_pose.p.y = table_pose.p.y + np.random.uniform(-0.2, 0.2)
+    kit_pose.p.z = table_dims.z + 0.01
+    kit_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+    # box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0)
+    # color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+    # gym.set_rigid_body_color(env, box_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+    kit_handle = gym.create_actor(env , kit_asset, kit_pose, "box", i, 1)
+    kit_idx = gym.get_actor_rigid_body_index(env, kit_handle, 0, gymapi.DOMAIN_SIM)
+    kit_idxs.append(kit_idx)
 
     # add franka
     franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2)
@@ -315,10 +340,10 @@ init_rot = torch.Tensor(init_rot_list).view(num_envs, 4).to(device)
 # hand orientation for grasping
 down_q = torch.stack(num_envs * [torch.tensor([1.0, 0.0, 0.0, 0.0])]).to(device).view((num_envs, 4))
 
-# box corner coords, used to determine grasping yaw
-box_half_size = 0.5 * box_size
-corner_coord = torch.Tensor([box_half_size, box_half_size, box_half_size])
-corners = torch.stack(num_envs * [corner_coord]).to(device)
+# # box corner coords, used to determine grasping yaw
+# box_half_size = 0.5 * box_size
+# corner_coord = torch.Tensor([box_half_size, box_half_size, box_half_size])
+# corners = torch.stack(num_envs * [corner_coord]).to(device)
 
 # downard axis
 down_dir = torch.Tensor([0, 0, -1]).to(device).view(1, 3)
@@ -370,8 +395,8 @@ while not gym.query_viewer_has_closed(viewer):
     gym.refresh_jacobian_tensors(sim)
     gym.refresh_mass_matrix_tensors(sim)
 
-    box_pos = rb_states[box_idxs, :3]
-    box_rot = rb_states[box_idxs, 3:7]
+    box_pos = rb_states[peg_idxs, :3]
+    box_rot = rb_states[peg_idxs, 3:7]
 
     hand_pos = rb_states[hand_idxs, :3]
     hand_rot = rb_states[hand_idxs, 3:7]
