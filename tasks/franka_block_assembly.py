@@ -493,8 +493,8 @@ class FrankaBlockAssembly():
         
         # create root path
         # os.makedirs(os.path.join('data',f'goal_{self.args.goal}',exist_ok=True))
-        os.makedirs(os.path.join('data', f'goal_{self.args.goal}',self.time_str),exist_ok=True)
-        self.img_pth_root = os.path.join('data', f'goal_{self.args.goal}',self.time_str)
+        os.makedirs(os.path.join('data','block_assembly', f'goal_{self.args.goal}',self.time_str),exist_ok=True)
+        self.img_pth_root = os.path.join('data','block_assembly', f'goal_{self.args.goal}',self.time_str)
         env_pth = os.path.join(self.img_pth_root, 'env_{}')
         
         # create path for each envs
@@ -820,7 +820,7 @@ class FrankaBlockAssembly():
 
         for i in range(self.num_envs):
             if self.reward[i]<0.99:
-                shutil.rmtree(f'data/goal_{self.args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
+                shutil.rmtree(f'data/block_assembly/goal_{self.args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
             else:
                 success_env.append(i)
         

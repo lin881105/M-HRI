@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding='utf-8'?>
-<robot name="triangle">
-  <link name="triangle">
+<robot name="square">
+  <link name="square">
     <visual>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="triangle.obj" scale="10.0 10.0 10.0"/>
+        <mesh filename="square.obj" scale="10.0 10.0 10.0"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="triangle.obj" scale="10.0 10.0 10.0"/>
+        <mesh filename="square.obj" scale="10.0 10.0 10.0"/>
       </geometry>
     </collision>
     <inertial>

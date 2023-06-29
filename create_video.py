@@ -4,7 +4,7 @@ import glob
 import numpy as np
 
 camera_serials = ['side', 'in_hand']
-img_root_pth = 'data/2023-05-12-15-23-43/env_00002'
+img_root_pth = 'data/peg_insertion/goal_1/2023-06-28-20-09-46/env_00000'
 
 rgb_pth_dict = {}
 depth_pth_dict = {}
@@ -37,7 +37,7 @@ for camera_id in camera_serials:
 
     img_array_dict[camera_id] = img_array
 
-    out = cv2.VideoWriter(f'./{camera_id}.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 6, (640 * 3, 480))
+    out = cv2.VideoWriter(f'./out.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 6, (640 * 3, 480))
     
     for img in img_array:
         out.write(img)

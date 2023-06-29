@@ -24,13 +24,13 @@ import scipy.io as sio
 #     {"name": "--save", "action": "store_true"},
 # ]
 # self.args = gymutil.parse_arguments(
-#     description="Franka block assembly demonstration",
+#     description="Franka peg assembly demonstration",
 #     custom_parameters=custom_parameters,
 # )
 
 
 
-class FrankaBlockAssembly():
+class FrankaPegInsertion():
 
     def __init__(self,args):
         
@@ -112,19 +112,20 @@ class FrankaBlockAssembly():
         asset_options.fix_base_link = True
         table_asset = self.gym.create_box(self.sim, table_dims.x, table_dims.y, table_dims.z, asset_options)
 
-        # create target region
-        region_dims = gymapi.Vec3(0.1,0.1,0.0001)
+        # create kit assets
         asset_options = gymapi.AssetOptions()
         asset_options.fix_base_link = True
-        region_asset = self.gym.create_box(self.sim, region_dims.x,region_dims.y, region_dims.z, asset_options)
+        kit_asset = self.gym.load_asset(self.sim, self.asset_root, 'urdf/peg_insertion/kit.urdf',asset_options)
 
-        # load block asset
-        block_asset_list = []
+        # create peg assets
+        peg_asset_list = []
         asset_options = gymapi.AssetOptions()
+        # asset_options.fix_base_link = True
         # asset_options.flip_visual_attachments = True
-        block_type = ['A.urdf', 'B.urdf', 'C.urdf', 'D.urdf', 'E.urdf']
-        for t in block_type:
-            block_asset_list.append(self.gym.load_asset(self.sim, self.asset_root, 'urdf/block_assembly/block_' + t, asset_options))
+        peg_type = ['rectangle', 'square', 'pentagon', 'triangle']
+        for t in peg_type:
+            peg_asset_list.append(self.gym.load_asset(self.sim, self.asset_root, 'urdf/peg_insertion/' + t + '.urdf', asset_options))
+
 
         # load franka asset
         franka_asset_file = "urdf/franka_description/robots/franka_panda.urdf"
@@ -184,19 +185,19 @@ class FrankaBlockAssembly():
         table_pose = gymapi.Transform()
         table_pose.p = gymapi.Vec3(0.4, 0.0, 0.5 * table_dims.z)
 
-        region_pose = gymapi.Transform()
+        kit_pose = gymapi.Transform()
         
         self.envs = []
-        self.block_idxs_list = [[] for _ in range(self.num_envs)]
+        self.peg_idxs_list = [[] for _ in range(self.num_envs)]
         self.hand_idxs = []
         self.init_pos_list = []
         self.init_rot_list = []
-        self.block_handles_list = [ [] for _ in range(self.num_envs)]
-        self.region_pose_list = []
+        self.peg_handles_list = [ [] for _ in range(self.num_envs)]
+        self.kit_pose_list = []
         self.hand_handle_list = []
-        self.region_init_pose_list = []
-        self.block_init_pose_list = [[] for _ in range(self.num_envs)]
-        self.block_color = [[] for _ in range(self.num_envs)]
+        self.kit_init_pose_list = []
+        self.peg_init_pose_list = [[] for _ in range(self.num_envs)]
+        self.peg_color = [[] for _ in range(self.num_envs)]
 
         for i in range(self.num_envs):
 
@@ -207,53 +208,53 @@ class FrankaBlockAssembly():
             # add table
             table_handle = self.gym.create_actor(env, table_asset, table_pose, "table", i, 0, 1)
 
-            # add region
-            region_pose.p.x = table_pose.p.x + self.region_xy[i][0]
-            region_pose.p.y = table_pose.p.y + self.region_xy[i][1]
-            region_pose.p.z = table_dims.z #+ 0.001
-            region_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi/2, math.pi/2))
+            # add kit
+            kit_pose.p.x = table_pose.p.x + self.kit_xy[i][0]
+            kit_pose.p.y = table_pose.p.y + self.kit_xy[i][1]
+            kit_pose.p.z = table_dims.z #+ 0.001
+            kit_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi/2, math.pi/2))
             
-            region_pose_mat = utils.gymapi_transform2mat(region_pose)
-            self.region_pose_list.append(region_pose_mat)
+            kit_pose_mat = utils.gymapi_transform2mat(kit_pose)
+            self.kit_pose_list.append(kit_pose_mat)
 
-            self.region_init_pose_list.append(np.array((region_pose.p.x,region_pose.p.y,region_pose.p.z,
-                                              region_pose.r.x,region_pose.r.y,region_pose.r.z,region_pose.r.w)))
+            self.kit_init_pose_list.append(np.array((kit_pose.p.x,kit_pose.p.y,kit_pose.p.z,
+                                              kit_pose.r.x,kit_pose.r.y,kit_pose.r.z,kit_pose.r.w)))
 
-            black = gymapi.Vec3(0.,0.,0.)
-            region_handle = self.gym.create_actor(env, region_asset, region_pose, "target", i, 1, 2)
-            self.gym.set_rigid_body_color(env, region_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, black)
+            color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+            kit_handle = self.gym.create_actor(env, kit_asset, kit_pose, "target", i, 1, 2)
+            self.gym.set_rigid_body_color(env, kit_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
 
             # add box
 
             for j, idx in enumerate(self.goal_list):
 
-                block_pose = gymapi.Transform()
-                block_pose.p.x = table_pose.p.x + self.rand_xy[i][j][0]
-                block_pose.p.y = table_pose.p.y + self.rand_xy[i][j][1]
-                block_pose.p.z = table_dims.z + self.block_height[0][j]
+                peg_pose = gymapi.Transform()
+                peg_pose.p.x = table_pose.p.x + self.rand_xy[i][j][0]
+                peg_pose.p.y = table_pose.p.y + self.rand_xy[i][j][1]
+                peg_pose.p.z = table_dims.z + self.peg_height[0][j]
 
                 r1 = R.from_euler('z', np.random.uniform(-math.pi/2, math.pi/2))
                 r2 = R.from_matrix(self.goal_pose[j][:3,:3])
                 rot = r1 * r2
                 euler = rot.as_euler("xyz", degrees=False)
 
-                block_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
+                peg_pose.r = gymapi.Quat.from_euler_zyx(euler[0], euler[1], euler[2])
 
-                block_handle = self.gym.create_actor(env, block_asset_list[idx], block_pose, 'block_' + block_type[idx], i, 2 ** (j + 2), j + 3)
-                self.block_handles_list[i].append(block_handle)
+                peg_handle = self.gym.create_actor(env, peg_asset_list[idx], peg_pose, 'peg_' + peg_type[idx], i, 2 ** (j + 2), j + 3)
+                self.peg_handles_list[i].append(peg_handle)
 
                 color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
-                self.gym.set_rigid_body_color(env, block_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
-                block_idx = self.gym.get_actor_rigid_body_index(env, block_handle, 0, gymapi.DOMAIN_SIM)
-                self.block_idxs_list[i].append(block_idx)
+                self.gym.set_rigid_body_color(env, peg_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+                peg_idx = self.gym.get_actor_rigid_body_index(env, peg_handle, 0, gymapi.DOMAIN_SIM)
+                self.peg_idxs_list[i].append(peg_idx)
 
-                self.block_init_pose_list[i].append(np.array((block_pose.p.x,block_pose.p.y,block_pose.p.z,
-                                                             block_pose.r.x,block_pose.r.y,block_pose.r.z,block_pose.r.w)))
-                self.block_color[i].append(color)
+                self.peg_init_pose_list[i].append(np.array((peg_pose.p.x,peg_pose.p.y,peg_pose.p.z,
+                                                             peg_pose.r.x,peg_pose.r.y,peg_pose.r.z,peg_pose.r.w)))
+                self.peg_color[i].append(color)
             
             # init_pose = {
-            #     "block_init_pose_world":block_init_pose_list,
-            #     "region_init_pose_world":region_init_pose,
+            #     "peg_init_pose_world":peg_init_pose_list,
+            #     "kit_init_pose_world":kit_init_pose,
             # }
 
             # sio.savemat(f"data/goal_{self.args.goal}/{self.time_str}/env_{str(i).zfill(5)}/init_pose.mat",init_pose)
@@ -261,7 +262,7 @@ class FrankaBlockAssembly():
 
             # # get global index of box in rigid body state tensor
             # box_idx = gym.get_actor_rigid_body_index(env, box_handle, 0, gymapi.DOMAIN_SIM)
-            # block_idxs.append(box_idx)
+            # peg_idxs.append(box_idx)
 
             # add franka
             franka_handle = self.gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2 ** (2 + len(self.goal_list)), 7)
@@ -314,28 +315,28 @@ class FrankaBlockAssembly():
         self.pos_action = torch.zeros_like(self.dof_pos).squeeze(-1)
     
     def load_goal_data(self):
-        mat_file = f"goal/block_assembly/goal_data/goal_{self.args.goal}_data.mat"
+        mat_file = f"goal/peg_insertion/goal_data/goal_{self.args.goal}_data.mat"
         mat_dict = sio.loadmat(mat_file)
 
-        self.goal_list = mat_dict["block_list"][0]
-        self.goal_pose = mat_dict["block_pose"]
+        self.goal_list = mat_dict["peg_list"][0]
+        self.goal_pose = mat_dict["peg_pose"]
         self.rel_pick_pos = mat_dict["pick_pose"]
         self.rel_place_pos = mat_dict["place_pose"]
-        self.block_height = mat_dict["block_height"]
+        self.peg_height = mat_dict["peg_height"]
         
-    def check_in_region(self, region_xy, rand_xy):
+    def check_in_kit(self, kit_xy, rand_xy):
         # for j in range(rand_xy.shape[0]):
         #     for i in range(rand_xy.shape[1]):
-        #         if np.linalg.norm(region_xy[j] - rand_xy[j][i]) < 0.08:
+        #         if np.linalg.norm(kit_xy[j] - rand_xy[j][i]) < 0.08:
         #             return True
-        reset_idx = torch.where(torch.norm(region_xy.unsqueeze(1).repeat(1,len(self.goal_list),1) - rand_xy,dim=2)<0.08,True,False)
+        reset_idx = torch.where(torch.norm(kit_xy.unsqueeze(1).repeat(1,len(self.goal_list),1) - rand_xy,dim=2)<0.08,True,False)
         # reset_idx = torch.logical_not(_diff).to(self.device)
    
         # reset_idx = torch.logical_not(_diff).to(self.device)
         
         return reset_idx
 
-    def check_contact_block(self,rand_xy):
+    def check_contact_peg(self,rand_xy):
         # for k in range(rand_xy.shape[0]):
         #     for i in range(rand_xy.shape[1]):
         #         for j in range(i+1, rand_xy.shape[2]):
@@ -358,19 +359,19 @@ class FrankaBlockAssembly():
     
     def generate_pose(self):
 
-        # self.region_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], (self.num_envs,2))
-        self.region_xy = torch.FloatTensor(self.num_envs,2).uniform_(-0.085,0.085).to(self.device)
+        # self.kit_xy = np.random.uniform([-0.085, -0.085], [0.085, 0.085], (self.num_envs,2))
+        self.kit_xy = torch.FloatTensor(self.num_envs,2).uniform_(-0.085,0.085).to(self.device)
         self.rand_xy = torch.stack((torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.13,0.13),
                                     torch.FloatTensor(self.num_envs,len(self.goal_list)).uniform_(-0.23,0.23)),dim=2).to(self.device)
 
         while True:
             # self.rand_xy = np.random.uniform([-0.13, -0.23], [0.13, 0.23], (self.num_envs,len(self.goal_list), 2))
-            region_reset_idx = self.check_in_region(self.region_xy, self.rand_xy)
-            block_reset_idx = self.check_contact_block(self.rand_xy)
-            # print(region_reset_idx)
-            # print(block_reset_idx)
+            kit_reset_idx = self.check_in_kit(self.kit_xy, self.rand_xy)
+            peg_reset_idx = self.check_contact_peg(self.rand_xy)
+            # print(kit_reset_idx)
+            # print(peg_reset_idx)
 
-            reset_idx = torch.logical_or(region_reset_idx,block_reset_idx).to(self.device)
+            reset_idx = torch.logical_or(kit_reset_idx,peg_reset_idx).to(self.device)
 
             if torch.all(torch.logical_not(reset_idx)):
                 break
@@ -396,7 +397,7 @@ class FrankaBlockAssembly():
         
         for i in range(self.num_envs):
             for j in range(self.goal_list.shape[0]):
-                body_states = self.gym.get_actor_rigid_body_states(self.envs[i], self.block_handles_list[i][j], gymapi.STATE_ALL)
+                body_states = self.gym.get_actor_rigid_body_states(self.envs[i], self.peg_handles_list[i][j], gymapi.STATE_ALL)
 
                 tmp_mat = np.eye(4)
                 tmp_mat[:3, :3] = R.from_quat(np.array([body_states["pose"]["r"]["x"],
@@ -406,19 +407,19 @@ class FrankaBlockAssembly():
                 
                 tmp_mat[:3, 3] = np.array([body_states["pose"]["p"]["x"], body_states["pose"]["p"]["y"], body_states["pose"]["p"]["z"]]).reshape(-1)
 
-                place_mat = self.region_pose_list[i] @ self.rel_place_pos[j]
+                place_mat = self.kit_pose_list[i] @ self.rel_place_pos[j]
                 pick_mat = tmp_mat @ self.rel_pick_pos[j]
                 
                 goal_pick_pose = utils.mat2gymapi_transform(pick_mat)
                 goal_place_pose = utils.mat2gymapi_transform(place_mat)
-                goal_pose_world = self.region_pose_list[i] @ self.goal_pose[j]
+                goal_pose_world = self.kit_pose_list[i] @ self.goal_pose[j]
                 goal_pose_world = utils.mat2gymapi_transform(goal_pose_world)
 
-                goal_prepick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,0.7)).reshape(1, 3).to(self.device)
+                goal_prepick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,0.71)).reshape(1, 3).to(self.device)
                 goal_pick_pos = torch.Tensor((goal_pick_pose.p.x,goal_pick_pose.p.y,goal_pick_pose.p.z)).reshape(1, 3).to(self.device)
                 goal_pick_rot = torch.Tensor((goal_pick_pose.r.x,goal_pick_pose.r.y,goal_pick_pose.r.z,goal_pick_pose.r.w)).reshape(1, 4).to(self.device)
 
-                goal_preplace_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,0.7)).reshape(1, 3).to(self.device)
+                goal_preplace_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,0.71)).reshape(1, 3).to(self.device)
                 goal_place_pos = torch.Tensor((goal_place_pose.p.x,goal_place_pose.p.y,goal_place_pose.p.z)).reshape(1, 3).to(self.device)
                 goal_place_rot = torch.Tensor((goal_place_pose.r.x,goal_place_pose.r.y,goal_place_pose.r.z,goal_place_pose.r.w)).reshape(1, 4).to(self.device)
 
@@ -493,8 +494,8 @@ class FrankaBlockAssembly():
         
         # create root path
         # os.makedirs(os.path.join('data',f'goal_{self.args.goal}',exist_ok=True))
-        os.makedirs(os.path.join('data', f'goal_{self.args.goal}',self.time_str),exist_ok=True)
-        self.img_pth_root = os.path.join('data', f'goal_{self.args.goal}',self.time_str)
+        os.makedirs(os.path.join('data', 'peg_insertion', f'goal_{self.args.goal}',self.time_str),exist_ok=True)
+        self.img_pth_root = os.path.join('data', 'peg_insertion', f'goal_{self.args.goal}',self.time_str)
         env_pth = os.path.join(self.img_pth_root, 'env_{}')
         
         # create path for each envs
@@ -666,10 +667,10 @@ class FrankaBlockAssembly():
                 hand_pos = self.rb_states[self.hand_idxs, :3]
                 hand_rot = self.rb_states[self.hand_idxs, 3:7]
 
-                block_pos_list = self.rb_states[self.block_idxs_list, :3]
-                block_rot_list = self.rb_states[self.block_idxs_list, 3:7]
+                peg_pos_list = self.rb_states[self.peg_idxs_list, :3]
+                peg_rot_list = self.rb_states[self.peg_idxs_list, 3:7]
 
-                current_pose_list = torch.cat([block_pos_list,block_rot_list],dim=2).to(self.device)
+                current_pose_list = torch.cat([peg_pos_list,peg_rot_list],dim=2).to(self.device)
 
                 # hand_vel = self.rb_states[self.hand_idxs, 7:]
 
@@ -775,7 +776,7 @@ class FrankaBlockAssembly():
 
                     
                 # else:
-                #     # check block pose
+                #     # check peg pose
                 #     pass
 
                 if op:
@@ -820,19 +821,19 @@ class FrankaBlockAssembly():
 
         for i in range(self.num_envs):
             if self.reward[i]<0.99:
-                shutil.rmtree(f'data/goal_{self.args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
+                shutil.rmtree(f'data/peg_insertion/goal_{self.args.goal}/{self.time_str}/env_{str(i).zfill(5)}')
             else:
                 success_env.append(i)
         
         info = {
             "success_envs":success_env,
-            "region_init_pose":self.region_init_pose_list,
-            "block_init_pose":self.block_init_pose_list,
-            "block_color":self.block_color,
+            "kit_init_pose":self.kit_init_pose_list,
+            "peg_init_pose":self.peg_init_pose_list,
+            "peg_color":self.peg_color,
             "img_pth":self.img_pth_root,
         }
         
-        # return success_env, self.region_init_pose_list, self.block_init_pose_list,self.block_color,self.img_pth_root
+        # return success_env, self.kit_init_pose_list, self.peg_init_pose_list,self.peg_color,self.img_pth_root
         return info
 
 

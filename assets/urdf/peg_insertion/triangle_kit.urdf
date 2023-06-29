@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding='utf-8'?>
-<robot name="block_A">
-  <link name="block_A">
+<robot name="triangle_kit">
+  <link name="triangle_kit">
     <visual>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
