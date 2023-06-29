@@ -887,8 +887,11 @@ class ManoBlockAssembly():
         torch.set_printoptions(sci_mode=False)
         self.frame_count=0
         self.done = torch.zeros((self.num_envs),dtype=torch.long).to(self.device)
+<<<<<<< HEAD:mano_block_assembly.py
+=======
         self.set_init_hand_pos()
         self.done_count = torch.zeros(self.num_envs,dtype=torch.long).to(self.device)
+>>>>>>> 9c0ec4db94560ad27f3be94e677aa41201cb5aaa:task/mano_block_assembly.py
 
         # self.reset_idx()
         for _ in trange(2000):

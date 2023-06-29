@@ -17,6 +17,19 @@ from tqdm import trange
 import scipy.io as sio
 
 
+<<<<<<< HEAD:franka_block_assembly.py
+custom_parameters = [
+    {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
+    {"name": "--headless", "action": "store_true", "help": "Run headless"},
+    {"name": "--goal", "type": str, "default":'1',"help": ""},
+    {"name": "--save", "action": "store_true"},
+    {"name": "--mano", "action": "store_true"},
+]
+args = gymutil.parse_arguments(
+    description="Franka block assembly demonstration",
+    custom_parameters=custom_parameters,
+)
+=======
 # custom_parameters = [
 #     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
 #     {"name": "--headless", "action": "store_true", "help": "Run headless"},
@@ -27,6 +40,7 @@ import scipy.io as sio
 #     description="Franka block assembly demonstration",
 #     custom_parameters=custom_parameters,
 # )
+>>>>>>> 9c0ec4db94560ad27f3be94e677aa41201cb5aaa:task/franka_block_assembly.py
 
 
 
@@ -483,6 +497,10 @@ class FrankaBlockAssembly():
             self.gym.set_camera_location(camera_handle, self.envs[i], camera_position, camera_target)
             self.side_camera_handle_list.append(camera_handle)
 
+            print(repr(self.gym.get_camera_view_matrix(self.sim, self.envs[i], camera_handle)))
+            print(repr(self.gym.get_camera_proj_matrix(self.sim, self.envs[i], camera_handle)))
+            exit()
+
             camera_handle_robot = self.gym.create_camera_sensor(self.envs[i], inHand_camera_properties)
             # link7_rb = self.gym.find_actor_rigid_body_handle(self.envs[i], self.hand_handle_list[i], 'panda_hand')
             self.gym.attach_camera_to_body(camera_handle_robot, self.envs[i], self.hand_handle_list[i], inHand_camera_rel_pose, gymapi.FOLLOW_TRANSFORM)
@@ -611,7 +629,10 @@ class FrankaBlockAssembly():
         self.reward = done*(1.0/len(self.goal_list))
 
         # print(self.reward)
-            
+
+    def get_camera_transform(self):
+        for camera_handle in self.inHand_camera_handle_list:
+            self.gym.get_camera_transform(self.sim,camera_handle)
     def simulate(self):
         
         step = torch.zeros(self.num_envs,dtype=torch.long).to(self.device)
@@ -839,4 +860,11 @@ class FrankaBlockAssembly():
 
 
 
+<<<<<<< HEAD:franka_block_assembly.py
+    if args.mano:
+        mano = ManoBlockAssembly(success_envs,block,region,img_pth,args)
+        mano.simulate()
+        
+=======
     
+>>>>>>> 9c0ec4db94560ad27f3be94e677aa41201cb5aaa:task/franka_block_assembly.py
