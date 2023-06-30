@@ -122,7 +122,7 @@ class FrankaPegInsertion():
         asset_options = gymapi.AssetOptions()
         # asset_options.fix_base_link = True
         # asset_options.flip_visual_attachments = True
-        peg_type = ['rectangle', 'square', 'pentagon', 'triangle']
+        peg_type = ['rectangle', 'square', 'hexagon', 'triangle']
         for t in peg_type:
             peg_asset_list.append(self.gym.load_asset(self.sim, self.asset_root, 'urdf/peg_insertion/' + t + '.urdf', asset_options))
 

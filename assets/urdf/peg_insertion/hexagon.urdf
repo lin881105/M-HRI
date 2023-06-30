@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding='utf-8'?>
-<robot name="pentagon">
-  <link name="pentagon">
+<robot name="hexagon">
+  <link name="hexagon">
     <visual>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="pentagon.obj" scale="10.0 10.0 10.0"/>
+        <mesh filename="hexagon.obj" scale="10.0 10.0 10.0"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="pentagon.obj" scale="10.0 10.0 10.0"/>
+        <mesh filename="hexagon.obj" scale="10.0 10.0 10.0"/>
       </geometry>
     </collision>
     <inertial>

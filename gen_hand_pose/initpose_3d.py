@@ -104,7 +104,7 @@ def get_scene_pcd(dpth_img, rgb_img, intrinsic, vis=False):
     pos, rgb = pos.cpu().detach().numpy().T[:,:3], rgb.cpu().detach().numpy()
     valid = (np.max(rgb,axis=1) + np.min(rgb,axis=1)) / 2 > 0.4
     # valid = np.all((valid,(np.max(rgb,axis=1) + np.min(rgb,axis=1)) / 2 > 0.1),axis=0)
-    pos, rgb = pos[valid], rgb[valid]
+    # pos, rgb = pos[valid], rgb[valid]
     scene_pcd = o3d.geometry.PointCloud()
     scene_pcd.points = o3d.utility.Vector3dVector(pos)
     scene_pcd.colors = o3d.utility.Vector3dVector(rgb)
@@ -197,6 +197,45 @@ def get_mesh_kpt():
                                 [7.15, 4.15, -2.39],
                                 [-7.15, 4.15, -2.39],
                                 [-7.15, -4.15, -2.39]]) / 100
+    
+    obj_points['square'] = np.array([[1.25, -1.25,5],
+                                [1.25, 1.25, 5],
+                                [-1.25, 1.25, 5],
+                                [-1.25, -1.25, 5],
+                                [1.25, -1.25, -5],
+                                [1.25, 1.25, -5],
+                                [-1.25, 1.25, -5],
+                                [-1.25, -1.25, -5]]) / 100
+
+    obj_points['rectangle'] = np.array([[1, -1.5, 5],
+                                [1, 1.5, 5],
+                                [-1, 1.5, 5],
+                                [-1, -1.5, 5],
+                                [1, -1.5, -5],
+                                [1, 1.5, -5],
+                                [-1, 1.5, -5],
+                                [-1, -1.5, -5]]) / 100
+
+    obj_points['triangle'] = np.array([[0.866, 1.5, 5],
+                                [-1.732, 0, 5],
+                                [0.866, -1.5, 5],
+                                [0.866, 1.5, -5],
+                                [-1.732, 0, -5],
+                                [0.866, -1.5, -5]]) / 100
+
+    obj_points['hexagon'] = np.array([[1.5, 0, 5],
+                                [0.75, 1.299, 5],
+                                [-0.75, 1.299, 5],
+                                [-1.5, 0, 5],
+                                [-0.75, -1.299, 5],
+                                [0.75, -1.299, 5],
+                                [1.5, 0, -5],
+                                [0.75, 1.299, -5],
+                                [-0.75, 1.299, -5],
+                                [-1.5, 0, -5],
+                                [-0.75, -1.299, -5],
+                                [0.75, -1.299, -5]]) / 100
+    
     return obj_points
 
 def get_2d_kpt(obj_type, camera_id):
@@ -227,7 +266,7 @@ def get_2d_kpt(obj_type, camera_id):
     return img_kpts_dict, vis_kpts_dict
 
 def loadData():
-    root_pth = '/home/hcis-s12/Lego_Assembly/Dataset/DexYCB/dex-ycb/data/20221001_171534/'
+    root_pth = '/home/hcis-s12/Lego_Assembly/Dataset/DexYCB/dex-ycb/data/20230629_150209_subsample/'
 
     with open(root_pth + 'meta.yml', 'r') as f:
         meta_file = yaml.load(f, Loader=yaml.FullLoader)
@@ -239,7 +278,8 @@ def loadData():
     # object mesh
     # key frmae = [0, 38, 66, 98, 132]
     # obj_type = ['D','B']
-    obj_type = ['A', 'B', 'D', 'E']
+    # obj_type = ['A', 'B', 'D', 'E']
+    obj_type = ['triangle','square','rectangle','hexagon']
     obj_mesh_dict = {}
 
     color_list = [[0, 0, 1],
@@ -248,8 +288,10 @@ def loadData():
                   [1, 0, 0]]
 
     for t, c in zip(obj_type, color_list):
-        obj_pth = f'/home/hcis-s12/.local/lib/python3.8/site-packages/pybullet_data/brick/type_{t}.obj'
+        # obj_pth = f'/home/hcis-s12/.local/lib/python3.8/site-packages/pybullet_data/brick/type_{t}.obj'
+        obj_pth = f'../assets/urdf/peg_insertion/{t}.obj'
         obj_mesh = o3d.io.read_triangle_mesh(obj_pth)
+        obj_mesh.scale(10, center=obj_mesh.get_center())
         obj_mesh.paint_uniform_color(c)
         # obj_mesh.compute_vertex_normals()
         obj_mesh_dict[t] = obj_mesh
@@ -286,16 +328,17 @@ def loadData():
         scene_kpts_dict[t] = np.zeros((3, 3))
         tmp = 3
         for i in range(3):
+            print(picked_points_list)
             scene_kpts_dict[t][:, i] = scene_pcd_position_array[picked_points_list[i+idx]].T
         # print(np.sqrt(np.sum(np.square(scene_kpts_dict[t][:, 0] - scene_kpts_dict[t][:, 1]))))
         # print(np.sqrt(np.sum(np.square(scene_kpts_dict[t][:, 1] - scene_kpts_dict[t][:, 2]))))
         idx += tmp
 
     obj_kpts_dict = {}
-    obj_kpts_dict[obj_type[0]] = mesh_kpts[obj_type[0]][[0, 1, 2], :].T
-    obj_kpts_dict[obj_type[1]] = mesh_kpts[obj_type[1]][[0, 1, 2], :].T
-    obj_kpts_dict[obj_type[2]] = mesh_kpts[obj_type[2]][[0, 1, 2], :].T
-    obj_kpts_dict[obj_type[3]] = mesh_kpts[obj_type[3]][[1, 2, 3], :].T
+    obj_kpts_dict[obj_type[0]] = mesh_kpts[obj_type[0]][[0, 1, 3], :].T
+    obj_kpts_dict[obj_type[1]] = mesh_kpts[obj_type[1]][[0, 1, 5], :].T
+    obj_kpts_dict[obj_type[2]] = mesh_kpts[obj_type[2]][[0, 1, 5], :].T
+    obj_kpts_dict[obj_type[3]] = mesh_kpts[obj_type[3]][[0, 3, 6], :].T
 
     return scene_kpts_dict, obj_kpts_dict, scene_pcd, intrinsic_dict, extrinsic_dict, dpth_img_dict[camera_serials[0]].shape, obj_mesh_dict, rgb_img_dict, obj_type, camera_serials
 
@@ -377,7 +420,7 @@ def transform_mesh(scene_pcd, scene_points_dict, obj_points_dict, obj_mesh_dict,
     # transform object pose to apriltag
     tmp_tf_obj = []
 
-    pth="/home/hcis-s12/Lego_Assembly/Dataset/DexYCB/dex-ycb/data/20221001_171534/"
+    pth="/home/hcis-s12/Lego_Assembly/Dataset/DexYCB/dex-ycb/data/20230629_150209_subsample/"
 
     with open(pth + "meta.yml", 'r') as f:
         meta = yaml.safe_load(f)
