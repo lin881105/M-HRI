@@ -17,19 +17,6 @@ from tqdm import trange
 import scipy.io as sio
 
 
-<<<<<<< HEAD:franka_block_assembly.py
-custom_parameters = [
-    {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
-    {"name": "--headless", "action": "store_true", "help": "Run headless"},
-    {"name": "--goal", "type": str, "default":'1',"help": ""},
-    {"name": "--save", "action": "store_true"},
-    {"name": "--mano", "action": "store_true"},
-]
-args = gymutil.parse_arguments(
-    description="Franka block assembly demonstration",
-    custom_parameters=custom_parameters,
-)
-=======
 # custom_parameters = [
 #     {"name": "--num_envs", "type": int, "default": 256, "help": "Number of environments to create"},
 #     {"name": "--headless", "action": "store_true", "help": "Run headless"},
@@ -40,7 +27,6 @@ args = gymutil.parse_arguments(
 #     description="Franka block assembly demonstration",
 #     custom_parameters=custom_parameters,
 # )
->>>>>>> 9c0ec4db94560ad27f3be94e677aa41201cb5aaa:task/franka_block_assembly.py
 
 
 
@@ -860,11 +846,4 @@ class FrankaBlockAssembly():
 
 
 
-<<<<<<< HEAD:franka_block_assembly.py
-    if args.mano:
-        mano = ManoBlockAssembly(success_envs,block,region,img_pth,args)
-        mano.simulate()
-        
-=======
     
->>>>>>> 9c0ec4db94560ad27f3be94e677aa41201cb5aaa:task/franka_block_assembly.py

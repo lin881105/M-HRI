@@ -279,7 +279,8 @@ def loadData():
     # key frmae = [0, 38, 66, 98, 132]
     # obj_type = ['D','B']
     # obj_type = ['A', 'B', 'D', 'E']
-    obj_type = ['triangle','square','rectangle','hexagon']
+    obj_type = ['square','triangle','rectangle','hexagon']
+    # obj_type = ['square']
     obj_mesh_dict = {}
 
     color_list = [[0, 0, 1],
@@ -335,8 +336,8 @@ def loadData():
         idx += tmp
 
     obj_kpts_dict = {}
-    obj_kpts_dict[obj_type[0]] = mesh_kpts[obj_type[0]][[0, 1, 3], :].T
-    obj_kpts_dict[obj_type[1]] = mesh_kpts[obj_type[1]][[0, 1, 5], :].T
+    obj_kpts_dict[obj_type[0]] = mesh_kpts[obj_type[0]][[0, 1, 5], :].T
+    obj_kpts_dict[obj_type[1]] = mesh_kpts[obj_type[1]][[0, 1, 3], :].T
     obj_kpts_dict[obj_type[2]] = mesh_kpts[obj_type[2]][[0, 1, 5], :].T
     obj_kpts_dict[obj_type[3]] = mesh_kpts[obj_type[3]][[0, 3, 6], :].T
 

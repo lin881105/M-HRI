@@ -253,7 +253,7 @@ def process_ycb(pose, meta, extr, ycb_name):
     ycb_pose = np.load('/home/hcis-s12/Desktop/M-HRI/gen_hand_pose/obj_pose.npy')
 
     # load open3d object mesh and transform to tag coordinate
-    obj_file = f"/home/hcis-s12/Lego_Assembly/Dataset/DexYCB/dex-ycb/data_dexycb/models/{ycb_name}/textured.obj"
+    obj_file = f"/home/hcis-s12/Desktop/M-HRI/asset/peg_insertion/{ycb_name}.obj"
     obj_mesh = o3d.io.read_triangle_mesh(obj_file)
     obj_mesh.remove_duplicated_vertices()
 
@@ -268,7 +268,7 @@ def process_ycb(pose, meta, extr, ycb_name):
 def run(root_dir, foldername):
     out_dict = {}
 
-    block_type = ["A", "B", "D", "E"]
+    block_type = ['square','triangle','rectangle','hexagon']
 
     for cnt, btype in enumerate(tqdm(block_type)):
         out_dict[cnt] = {}
@@ -295,8 +295,8 @@ def run(root_dir, foldername):
         # out_dict[cnt]["subgoal_1"]["hand_contact"] = target_contacts
     
     # write file
-    # with open(f"./test.pickle", "wb") as openfile:
-    #     pickle.dump(out_dict, openfile)
+    with open(f"./peg_insertion.pickle", "wb") as openfile:
+        pickle.dump(out_dict, openfile)
 
     return out_dict
 
@@ -398,9 +398,9 @@ class IsaacSim():
         lower = gymapi.Vec3(-spacing, 0.75 * -spacing, 0.0)
         upper = gymapi.Vec3(spacing, 0.75 * spacing, spacing)
 
-        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../assets")
+        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../assets")
         asset_file_mano = "urdf/mano/zeros/mano_addtips.urdf"
-        asset_file_block_list = ["urdf/block_assembly/block_{}.urdf".format(t) for t in ["A", "B", "D", "E"]]
+        asset_file_block_list = ["urdf/peg_insertion/{}.urdf".format(t) for t in ['square','triangle','rectangle','hexagon']]
 
         # create mano asset
         asset_path_mano = os.path.join(asset_root, asset_file_mano)
@@ -415,7 +415,8 @@ class IsaacSim():
         
         # create ycb asset
         asset_options = gymapi.AssetOptions()
-        # asset_options.fix_base_link = True
+        asset_options.fix_base_link = True
+        # asset_options.flip_visual_attachments = True
         # asset_path_ycb = os.path.join(asset_root, asset_file_ycb)
         # asset_root_ycb = os.path.dirname(asset_path_ycb)
         # asset_file_ycb = os.path.basename(asset_path_ycb)
@@ -444,9 +445,9 @@ class IsaacSim():
 
         # set default pose
         handobj_start_pose = gymapi.Transform()
-        handobj_start_pose.p = gymapi.Vec3(0, 0, 0)
-        handobj_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-
+        # handobj_start_pose.p = gymapi.Vec3(0, 0, 0)
+        # # handobj_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+        # handobj_start_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
         table_start_pose = gymapi.Transform()
         table_start_pose.p = gymapi.Vec3(0.5, 0.2, 0.5 - table_thickness / 2)
         table_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
@@ -496,8 +497,9 @@ class IsaacSim():
         self.data_num = len(self.good_data)
         self.num_envs = len(self.good_data)
         self.data_hand_ref = torch.from_numpy(np.array([data[i]["hand_ref_pose"][0, 0] for i in self.good_data]))
-        self.data_hand_ref = self.data_hand_ref[[2, 1, 0, 3]]
+        # self.data_hand_ref = self.data_hand_ref[[2, 1, 0, 3]]
         self.data_obj_init = torch.from_numpy(np.array([data[i]["obj_init"] for i in self.good_data]))
+        print(self.data_obj_init)
 
         # add table shift
         self.data_hand_ref[:, 2] += 0.5
@@ -539,7 +541,7 @@ class IsaacSim():
                 print('reset')
                 print()
 
-                # new_obj_pose = self.root_state_tensor[self.ycb_indices, :7]
+                new_obj_pose = self.root_state_tensor[self.ycb_indices, :7]
                 # break
 
                 self.reset_idx()
@@ -582,7 +584,7 @@ if __name__ == '__main__':
     out_dict = run(root_dir, foldername)
     
     # read file
-    with open(f"./test_ft.pickle", "rb") as openfile:
+    with open(f"./peg_insertion.pickle", "rb") as openfile:
         out_dict = pickle.load(openfile)
 
     print('-' * 20)
