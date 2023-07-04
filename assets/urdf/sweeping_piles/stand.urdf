@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<robot name="stand">
+    <link name="stand">
+        <visual>
+            <geometry>
+                <mesh filename="stand.stl" scale='.01 .01 .01'/>
+            </geometry>
+        </visual>
+        <collision>
+            <geometry>
+                <mesh filename="stand.stl" scale='.01 .01 .01'/>
+            </geometry>
+            <sdf resolution="512"/>
+        </collision>
+    </link>
+</robot>

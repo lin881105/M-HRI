@@ -162,13 +162,13 @@ gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_D, "turn_left")
 gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_E, "turn_up")
 gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_Q, "turn_down")
 gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_SPACE, "gripper_close")
-gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_TAB, "gripper_open")
+gym.subscribe_viewer_keyboard_event(viewer, gymapi.KEY_B, "quit")
 
 
 asset_root = "assets"
 
 # create table asset
-table_dims = gymapi.Vec3(0.6, 1.0, 0.4)
+table_dims = gymapi.Vec3(0.4, 0.6, 0.4)
 asset_options = gymapi.AssetOptions()
 asset_options.fix_base_link = True
 table_asset = gym.create_box(sim, table_dims.x, table_dims.y, table_dims.z, asset_options)
@@ -177,21 +177,27 @@ table_asset = gym.create_box(sim, table_dims.x, table_dims.y, table_dims.z, asse
 # box_size = 0.045
 # asset_options = gymapi.AssetOptions()
 # box_asset = gym.create_box(sim, box_size, box_size, box_size, asset_options)
-peg_asset_file = "urdf/peg_insertion/triangle.urdf"
+tool_asset_file = "urdf/sweeping_piles/tool.urdf"
 asset_options = gymapi.AssetOptions()
 asset_options.armature = 0.01
-asset_options.fix_base_link = True
+# asset_options.fix_base_link = True
 # asset_options.disable_gravity = True
 # asset_options.flip_visual_attachments = True
-peg_asset = gym.load_asset(sim, asset_root, peg_asset_file, asset_options)
+tool_asset = gym.load_asset(sim, asset_root, tool_asset_file, asset_options)
 
-kit_asset_file = "urdf/peg_insertion/triangle_kit.urdf"
+box_asset_file = "urdf/sweeping_piles/box.urdf"
 asset_options = gymapi.AssetOptions()
 asset_options.armature = 0.01
 asset_options.fix_base_link = True
 # asset_options.disable_gravity = True
 # asset_options.flip_visual_attachments = True
-kit_asset = gym.load_asset(sim, asset_root, kit_asset_file, asset_options)
+box_asset = gym.load_asset(sim, asset_root, box_asset_file, asset_options)
+
+# particle asset
+particle_dims = gymapi.Vec3(0.01, 0.01, 0.01)
+asset_options = gymapi.AssetOptions()
+# asset_options.fix_base_link = True
+particle_asset = gym.create_box(sim, particle_dims.x, particle_dims.y, particle_dims.z, asset_options)
 
 # load franka asset
 franka_asset_file = "urdf/franka_description/robots/franka_panda.urdf"
@@ -214,10 +220,7 @@ if controller == "ik":
     franka_dof_props["driveMode"][:7].fill(gymapi.DOF_MODE_POS)
     franka_dof_props["stiffness"][:7].fill(400.0)
     franka_dof_props["damping"][:7].fill(40.0)
-else:       # osc
-    franka_dof_props["driveMode"][:7].fill(gymapi.DOF_MODE_EFFORT)
-    franka_dof_props["stiffness"][:7].fill(0.0)
-    franka_dof_props["damping"][:7].fill(0.0)
+
 # grippers
 franka_dof_props["driveMode"][7:].fill(gymapi.DOF_MODE_POS)
 franka_dof_props["stiffness"][7:].fill(800.0)
@@ -254,15 +257,19 @@ franka_pose.p = gymapi.Vec3(0, 0, 0)
 table_pose = gymapi.Transform()
 table_pose.p = gymapi.Vec3(0.5, 0.0, 0.5 * table_dims.z)
 
-peg_pose = gymapi.Transform()
-kit_pose = gymapi.Transform()
+tool_pose = gymapi.Transform()
+# stand_pose = gymapi.Transform()
+box_pose = gymapi.Transform()
+particle_pose = gymapi.Transform()
 
 envs = []
-peg_idxs = []
-kit_idxs = []
+# stand_idxs = []
+tool_idxs = []
+box_idxs = []
 hand_idxs = []
 init_pos_list = []
 init_rot_list = []
+particle_idxs = [[] for _ in range(num_envs)]
 
 # add ground plane
 plane_params = gymapi.PlaneParams()
@@ -277,32 +284,45 @@ for i in range(num_envs):
     # add table
     table_handle = gym.create_actor(env, table_asset, table_pose, "table", i, 0)
 
-    # add peg
-    peg_pose.p.x = table_pose.p.x + np.random.uniform(-0.1, 0.1)
-    peg_pose.p.y = table_pose.p.y + np.random.uniform(-0.2, 0.2)
-    peg_pose.p.z = table_dims.z + 0.05
-    peg_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+    # add box
+    box_pose.p.x = table_pose.p.x + 0.24 
+    box_pose.p.y = table_pose.p.y 
+    box_pose.p.z = table_dims.z - 0.035
+    # box_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
     # box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0)
     # color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
     # gym.set_rigid_body_color(env, box_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
-    rope_handle = gym.create_actor(env , peg_asset, peg_pose, "box", i, 1)
-    peg_idx = gym.get_actor_rigid_body_index(env, rope_handle, 0, gymapi.DOMAIN_SIM)
-    peg_idxs.append(peg_idx)
+    box_handle = gym.create_actor(env , box_asset, box_pose, "box", i, 1)
+    box_idx = gym.get_actor_rigid_body_index(env, box_handle, 0, gymapi.DOMAIN_SIM)
+    box_idxs.append(box_idx)
 
-    # add kit
-    kit_pose.p.x = table_pose.p.x + np.random.uniform(-0.1, 0.1)
-    kit_pose.p.y = table_pose.p.y + np.random.uniform(-0.2, 0.2)
-    kit_pose.p.z = table_dims.z + 0.01
-    kit_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+    # add tool
+    tool_pose.p.x = table_pose.p.x
+    tool_pose.p.y = table_pose.p.y + 0.25
+    tool_pose.p.z = table_dims.z + 0.005
+    # tool_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
     # box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0)
     # color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
     # gym.set_rigid_body_color(env, box_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
-    kit_handle = gym.create_actor(env , kit_asset, kit_pose, "box", i, 1)
-    kit_idx = gym.get_actor_rigid_body_index(env, kit_handle, 0, gymapi.DOMAIN_SIM)
-    kit_idxs.append(kit_idx)
+    tool_handle = gym.create_actor(env , tool_asset, tool_pose, "tool", i, 1)
+    tool_idx = gym.get_actor_rigid_body_index(env, tool_handle, 0, gymapi.DOMAIN_SIM)
+    tool_idxs.append(box_idx)
+
+    # add particle
+    for j in range(10):
+        particle_pose.p.x = table_pose.p.x + np.random.uniform(-0.15, 0.15)
+        particle_pose.p.y = table_pose.p.y + np.random.uniform(-0.2, 0.2)
+        particle_pose.p.z = table_dims.z + 0.005
+        particle_pose.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0, 0, 1), np.random.uniform(-math.pi, math.pi))
+        # box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0)
+        # color = gymapi.Vec3(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+        # gym.set_rigid_body_color(env, box_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
+        particle_handle = gym.create_actor(env , particle_asset, particle_pose, "particle", i, 2**(j+2))
+        particle_idx = gym.get_actor_rigid_body_index(env, particle_handle, 0, gymapi.DOMAIN_SIM)
+        particle_idxs[i].append(box_idx)
 
     # add franka
-    franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2)
+    franka_handle = gym.create_actor(env, franka_asset, franka_pose, "franka", i, 2**12)
 
     # set dof properties
     gym.set_actor_dof_properties(env, franka_handle, franka_dof_props)
@@ -395,8 +415,8 @@ while not gym.query_viewer_has_closed(viewer):
     gym.refresh_jacobian_tensors(sim)
     gym.refresh_mass_matrix_tensors(sim)
 
-    box_pos = rb_states[peg_idxs, :3]
-    box_rot = rb_states[peg_idxs, 3:7]
+    box_pos = rb_states[box_idxs, :3]
+    box_rot = rb_states[box_idxs, 3:7]
 
     hand_pos = rb_states[hand_idxs, :3]
     hand_rot = rb_states[hand_idxs, 3:7]
@@ -416,6 +436,13 @@ while not gym.query_viewer_has_closed(viewer):
 
         if evt.value > 0:
             action = evt.action
+            if action == "gripper_close":
+                dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
+                if torch.all(pos_action[:,7:9] == gripper_close):
+                    pos_action[:,7:9] = gripper_open
+                elif torch.all(pos_action[:,7:9] == gripper_open):
+                    pos_action[:,7:9] = gripper_close
+                action = ''
         else :
             action = ''
 
@@ -441,19 +468,18 @@ while not gym.query_viewer_has_closed(viewer):
         dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[-10.],[0.]]]).to(device) * 0.01
     elif action == "gripper_close":
         dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
-        if evt.value == 1:
+        if torch.all(pos_action[:,7:9] == gripper_close):
+            pos_action[:,7:9] = gripper_open
+        elif torch.all(pos_action[:,7:9] == gripper_open):
             pos_action[:,7:9] = gripper_close
-    elif action == "gripper_open":
-        dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
-        pos_action[:,7:9] = gripper_open
+    elif action == "quit":
+        break
     else:
         dpose = torch.Tensor([[[0.],[0.],[0.],[0.],[0.],[0.]]]).to(device)
 
 
-    if controller == "ik":
-        pos_action[:, :7] = dof_pos.squeeze(-1)[:, :7] + control_ik(dpose)
-    else:       # osc
-        effort_action[:, :7] = control_osc(dpose)
+    
+    pos_action[:, :7] = dof_pos.squeeze(-1)[:, :7] + control_ik(dpose)
 
     # tmp_action = torch.cat((pos_action,rope_pos.squeeze(-1)),1)
     # Deploy actions
